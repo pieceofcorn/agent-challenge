@@ -1,0 +1,69 @@
+# Python environments and build artifacts
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Caches and test output
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.crawl4ai/
+
+# Secrets and environment files
+.env
+.env.*
+.envrc
+.envrc.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+.netrc
+.pypirc
+.ssh/
+credentials.json
+secrets.json
+secrets.toml
+secrets.*
+tokens.*
+credentials.*
+api_keys.*
+*.token
+*.secret
+*.env
+
+# Local configuration; config.toml is the public example
+config.local.*
+*.local.toml
+*.local.json
+*.local.yaml
+*.local.yml
+
+# Runtime data, databases, crawled pages, exports and logs
+/data/
+logs/
+*.db
+*.db-*
+*.sqlite*
+*.log
+
+# Editor and OS temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

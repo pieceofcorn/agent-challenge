@@ -1,0 +1,10 @@
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>离线 Atom 测试</title>
+  <entry><id>tag:example.test,2026:one</id><title>测试 Atom</title>
+    <link rel="self" href="https://example.edu.cn/feed/one"/>
+    <link rel="alternate" href="/2026/1019/c1a3/page.htm"/>
+    <published>2026-10-19T01:30:00Z</published>
+    <summary type="html">&lt;p&gt;摘要&lt;/p&gt;</summary>
+    <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>正文第一段</p><p>正文第二段</p></div></content>
+  </entry>
+</feed>
