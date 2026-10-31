@@ -11,10 +11,13 @@ from .webpages import DirectWebPlusCollector
 
 
 class PulseService:
-    def __init__(self, config: Config, *, storage: Storage | None = None, collectors=None, clock=utcnow):
+    def __init__(self, config: Config, *, storage: Storage | None = None, collectors=None, clock=utcnow,
+                 read_only: bool = False):
         self.config = config
-        self.storage = storage or Storage(config.database)
-        self.storage.sync_sources(config.sources)
+        self.read_only = read_only
+        self.storage = storage or Storage(config.database, read_only=read_only)
+        if not read_only:
+            self.storage.sync_sources(config.sources)
         self.clock = clock
         client = HttpClient()
         defaults = {"html": WebPlusCollector(client), "webplus": DirectWebPlusCollector(client)}
@@ -23,8 +26,8 @@ class PulseService:
         self.collectors = collectors if collectors is not None else defaults
 
     @classmethod
-    def from_config(cls, path="config.toml"):
-        return cls(load_config(path))
+    def from_config(cls, path="config.toml", *, read_only=False):
+        return cls(load_config(path), read_only=read_only)
 
     def __enter__(self):
         return self
@@ -40,6 +43,8 @@ class PulseService:
             raise ValueError(f"未知来源标识: {source_id}")
 
     def fetch_notices(self, *, source_ids: list[str] | None = None) -> FetchResult:
+        if self.read_only:
+            raise ValueError("只读服务不允许采集或写入")
         if source_ids is not None:
             if not isinstance(source_ids, list) or not all(isinstance(s, str) for s in source_ids):
                 raise ValueError("source_ids 必须为字符串列表或 None")

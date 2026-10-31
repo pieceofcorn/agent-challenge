@@ -1,10 +1,10 @@
 # SEU-Pulse
 
-SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目。当前进入**第二阶段：单 Agent 信息理解与智能决策**，处于开发准备阶段；主动管理是项目定位，当前没有主动推送或完整个人事项管理功能。
+SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目。当前进入**第二阶段：单 Agent 信息理解与智能决策**，已新增任务 2.1 的通知理解组件；主动管理是项目定位，当前没有主动推送或完整个人事项管理功能。
 
 第一阶段已实现并验收 Python 采集、统一通知模型、SQLite 持久化、增量去重、服务层查询和 CLI。网页直接采集列表和正文为主，RSSHub 和静态列表适配器保留，可混合采集。默认来源为教务处国际交流和吴健雄学院通知公告；原始 HTML、正文及去重的历史验收证据见 [第一阶段报告](docs/phase1-report.md)，完整任务与网络诊断记录见 [tasks.md](tasks.md)。
 
-第二阶段将增加通知结构化理解、按需调用只读工具的单 Agent 执行循环、分析结果持久化及规则基线评估，先完成任务 2.1 的设计审查。当前未实现 Information Agent、模型 API 接入、Tool Calling 或 NoticeAnalysis；下面的安装和命令说明均对应已有第一阶段能力，没有可运行的 Agent 命令。
+第二阶段已新增 DeepSeek 通知结构化理解、严格输出校验、程序紧迫性计算和只读 analyze 命令。真实模型接口以明确标注的合成通知验证；真实通知外发验证尚待具体授权。按需工具执行循环、NoticeAnalysis 持久化及真实通知规则基线评估仍属后续任务，单次理解及输出修正不作为完整 Agent。
 
 ## 文档导航
 
@@ -16,19 +16,19 @@ SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目
 | [agent.md](agent.md) | 数据模型与接口契约 |
 | [tasks.md](tasks.md) | 开发任务与进度，顶部为第二阶段、后部保留第一阶段历史 |
 | [docs/phase1-report.md](docs/phase1-report.md) | 第一阶段实际交付与历史验收报告 |
-| [docs/phase2-report.md](docs/phase2-report.md) | 第二阶段开发过程与交付报告，当前尚未实施 |
+| [docs/phase2-report.md](docs/phase2-report.md) | 第二阶段设计、开发过程、真实验证与失败记录 |
 
-## 第二阶段开发准备
+## 第二阶段能力
 
 整体数据流：校园信息采集 → SQLite 通知数据库 → Information Agent → 工具调用与信息补充 → 结构化分析结果 → 数据校验与持久化。
 
 | 任务 | 计划能力 | 实施状态 |
 | --- | --- | --- |
-| 2.1 通知结构化理解 | 分类、重要性、用户相关性、行动需求、时间地点和理由；程序计算紧迫性 | 尚未实施，先进行最小架构与输出 Schema 审查 |
+| 2.1 通知结构化理解 | 分类、重要性、用户相关性、行动需求、时间地点和理由；程序计算紧迫性 | 已实现；支持缺正文、缺偏好与失败状态 |
 | 2.2 最小 Tool Calling | get_notice_detail、get_user_preferences 与按需执行循环 | 尚未实施 |
 | 2.3 结果持久化与评估 | NoticeAnalysis、SQLite 持久化、10～15 条真实通知与规则基线比较 | 尚未实施 |
 
-模型 API、框架及 Schema 校验库尚未在受检代码中实现或验证，不把 Pydantic AI 等候选写成已选型方案。技术选型与设计边界见 [第二阶段需求](require.md#第二阶段需求单-agent-信息理解与智能决策)和[待确认的分析契约](agent.md#第二阶段扩展说明)。持续进度仅在 tasks.md 维护，本表用于区分规划与现有可运行能力。
+任务 2.1 使用标准库 urllib/json 接入官方 DeepSeek Flash Chat Completions，无新增 SDK 或 Agent 框架依赖；Schema 与时间/证据校验在本地执行，不把 JSON Output 当字段正确性保证。具体约定见 [分析契约](agent.md#第二阶段扩展说明)，设计依据与实测/失败见第二阶段报告。持续进度仅在 tasks.md 维护。
 
 ## 安装与运行
 
@@ -53,7 +53,17 @@ python3 -m venv /tmp/seu-pulse-review
 /tmp/seu-pulse-review/bin/seu-pulse --help
 ```
 
-联网环境中的常规安装不需要这些临时 wheel。
+以上 data/wheels/ 中保留的是第一阶段历史安装产物。第二阶段需要重建到新目录，避免覆盖历史 wheel；本次也按此方式在不继承系统包的独立环境验证安装：
+
+```bash
+.venv/bin/python -m pip wheel --no-deps --no-build-isolation --no-index --wheel-dir data/phase2-wheels .
+python3 -m venv /tmp/seu-pulse-phase2-review
+/tmp/seu-pulse-phase2-review/bin/python -m pip install --no-index --find-links data/wheels data/phase2-wheels/seu_pulse-0.1.0-py3-none-any.whl
+/tmp/seu-pulse-phase2-review/bin/python -m pip check
+/tmp/seu-pulse-phase2-review/bin/seu-pulse analyze --help
+```
+
+联网环境中的常规安装不需要这些临时 wheel。现有 .venv 继承系统包，本轮 pip check 报告与项目无依赖关系的 PyGObject 缺少 pycairo；未修改系统环境，项目依赖另在上述干净环境核验。
 
 ## CLI
 
@@ -67,13 +77,14 @@ seu-pulse get NOTICE_ID --content-only
 seu-pulse export --output data/notices.json
 seu-pulse export --source radio-academic --since '2026-10-01T00:00:00Z'
 seu-pulse runs --limit 20
+seu-pulse analyze NOTICE_ID --env-file .env --as-of '2026-11-01T00:00:00Z'
 # 网页直采与已有 RSSHub 可在同一轮并用
 seu-pulse fetch --source jwc-international --source cse-notices
 ```
 
 `fetch` 返回运行 ID、起止时间、逐源状态与读取/新增/更新/未变数量、错误类别及摘要，还包含成功、失败及跳过来源的总数。无条目的有效 RSS/Atom 订阅是 `success` 且读取为 0；请求失败为 `failed`；采集间隔未到为 `skipped`。失败也会计入采集间隔，避免反复请求故障来源。`runs` 展示最近逐源记录，包括跳过记录。
 
-退出码：0 表示命令成功（包括按间隔跳过），1 表示至少一个来源采集失败，2 表示参数、配置或服务级存储/文件错误，3 表示按 ID 查询无记录。`get` 无记录同时输出 `null`。不存在正文的已有通知，`--content-only` 返回对象且 `content=null`。
+退出码：0 表示命令成功（包括按间隔跳过），1 表示至少一个来源采集失败或分析失败，2 表示参数、配置或服务级存储/文件错误，3 表示按 ID 查询无记录，4 表示 analyze 缺正文但部分分析通过校验。`get` 无记录同时输出 `null`，analyze 无记录输出独立失败对象。不存在正文的已有通知，`--content-only` 返回对象且 `content=null`。
 
 ## 配置
 
@@ -245,6 +256,36 @@ git check-ignore -v .env
 git status --ignored --short -- .env
 ```
 
-**当前程序尚未实现 DeepSeek 接入，也不会自动加载 .env。** 上述步骤只完成密钥存放；后续按审查确认的方案实现程序读取与 API 验证。在另一个终端 export 变量不会改变已启动的 Codex 进程环境。
+analyze 和模型验证脚本优先读取进程环境 DEEPSEEK_API_KEY，否则从 --env-file 指定文件读取（默认当前目录 .env）；只接受受限权限的常规密钥文件，不执行文件中的 Shell 内容。普通采集/查询命令不读取密钥或调用模型。在另一个终端 export 变量不会改变已启动的 Codex 进程环境。
 
 data/ 中的原始 HTML、历史失败与验收 JSON、测试日志、数据库和 wheel 全部保留本地。首次纳入版本控制的材料包括源码、文档、公开配置和明确标识的测试 fixture；采集正文、运行数据库、导出及日志继续忽略。第一阶段报告保留验收摘要和原始证据路径。忽略文件不会删除它们，也不会将其备份到 GitHub。
+
+## 通知结构化分析
+
+先按上节存放 DeepSeek 密钥。分析已有通知会把标题、摘要、可用正文及显式偏好发送到官方 DeepSeek；仅在你授权处理这些内容时运行。命令以只读方式打开 SQLite，不触发采集、不修改原通知，也不保存分析结果到数据库：
+
+```bash
+.venv/bin/python -m seu_pulse list --limit 3
+.venv/bin/python -m seu_pulse analyze NOTICE_ID --env-file .env
+.venv/bin/python -m seu_pulse analyze NOTICE_ID --preferences preferences.local.json --as-of '2026-11-01T00:00:00Z'
+```
+
+偏好文件为用户自行填写的 JSON，以下空配置不推断任何个人背景；文件未提供或不存在时相关性正常返回未知：
+
+```json
+{"interests": [], "keywords": [], "focus_areas": []}
+```
+
+结果分别包含模型理解、程序计算的逐截止点紧迫性、来源内容指纹、输入/偏好哈希、UTC 时间、实际响应模型标识及错误。所有字段、时间及空值约定集中见 agent.md。每条最多两次模型调用尝试，网络或鉴权失败不会隐藏重试。当前模型名固定 deepseek-flash，无法确认的具体版本保持 null。
+
+离线回归与模型接入分别验证。合成模式只发送脚本中手写的测试文本，不读取校园通知、通知库或用户偏好；它是真实 API 验证，不是真实校园通知评估：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -v
+.venv/bin/python -m compileall -q seu_pulse scripts tests
+.venv/bin/python scripts/verify_analysis_live.py --synthetic --output data/model-synthetic-new.json
+# 取得具体通知内容的外发授权后，最多指定三条真实通知；输出文件须使用新路径
+.venv/bin/python scripts/verify_analysis_live.py --notice-id NOTICE_ID --output data/model-live-new.json
+```
+
+验证脚本保存结果、实际返回标识、原始未校验输出及失败状态到忽略目录，不覆盖已有证据。真实通知模式还核对数据库前后哈希。本轮真实接口证据和限制见第二阶段报告；任务 2.2 工具循环与任务 2.3 持久化/10～15 条真实通知评估尚未实现。

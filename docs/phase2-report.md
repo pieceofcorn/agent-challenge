@@ -1,6 +1,6 @@
 # SEU-Pulse 第二阶段项目报告
 
-**尚未实施，处于开发准备阶段。** 本报告建立于 2026-11-01，仅记录本次文档准备的代码核查结论与后续报告结构；未编写第二阶段业务代码，未调用模型 API，未开展 Agent 测试或评估。开发任务和完成状态以 [tasks.md](../tasks.md) 为准。
+本报告建立于 2026-11-01，持续记录第二阶段设计、实现与验证。**第 1～10 节保留最初文档准备时的核查快照**，其中“尚未实施”等措辞指当时；后续实际操作按第 11 节起的记录追溯，最新实现与验证见第 14～15 节。开发任务和完成状态只在 [tasks.md](../tasks.md) 维护。
 
 ## 1. 阶段目标与范围
 
@@ -109,3 +109,35 @@
 首次提交前重新执行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -v`，36 项测试在 1.971 秒内全部通过；`.venv/bin/python -m compileall -q seu_pulse scripts tests` 退出码 0。本轮是第一阶段回归复验，没有调用模型 API 或重新采集。原有 60 个 data/ 文件记录 SHA-256，后续按同一批路径复核，避免历史证据被覆盖。
 
 获取最新远端后，使用 `git branch --track main origin/main` 与 `git read-tree HEAD` 建立远端历史基线，仅写 Git 引用、配置和索引，不 checkout 工作文件。远端既有 69a7cb4 提交及 README 保留；首次项目提交在其上追加，不建立无关根历史。任务 2.1 将先完成并记录设计审查，再据用户最新授权实施，不把已存放密钥视为模型验证通过。
+
+首次项目提交 e58f155（chore: import SEU-Pulse baseline and development docs）已推送，远端 main 从 69a7cb4 前进到该提交。暂存内容再次逐文件检查，不含 .env、配置中的真实密钥或 data/；34 个项目文件纳入版本控制。差异检查修正 pyproject.toml 文件末尾多余空行，未改变构建语义。新回归日志独立保存为 data/git-baseline-tests-20261101.log，原有 60 个 data/ 文件哈希均未变化。
+
+## 14. 任务 2.1 设计审查与取舍
+
+依据用户最新的常规选择自主授权，由 Codex 完成设计审查并确认低风险实现方案，随后更新 agent.md 具体契约。任务 2.2 的真正工具循环和任务 2.3 的分析存储仍分开实施。此次单次通知理解组件不作为完整 Agent 的验收结果。
+
+最小架构选择：现有服务增加可选只读打开方式；analysis_models.py 集中模型输出 Schema 与严格校验；model_client.py 以标准库 urllib/json 实现 DeepSeek 非流式 Chat Completions 适配与本地密钥读取；analysis.py 组织输入快照、有限修正、结果封装及程序紧迫性计算；CLI 增加 analyze。无需引入未经项目验证的 SDK、Agent 框架或 Pydantic AI，也不复用带校园 robots/重定向策略的采集客户端来发送模型密钥。
+
+自审重点包括：同一通知多个活动与截止点、偏好缺失不等于低相关性、重要性不依赖紧迫性、原文未明确的年份/时区保持未知、模型字段不能注入程序计算字段、正文和偏好引用必须能在实际输入中找到，以及读取通知不应改写生产数据库。选择活动与报名截止数组、带来源字段的原文证据、时间组成部分与原文并存、每个截止点分别计算紧迫性。24/72 小时阈值及恰好到期的边界由程序统一执行；完整规则只在 agent.md 维护。
+
+错误与预算审查：首次请求和最多一次结构修正，单次请求 60 秒、输出 4096 tokens；鉴权/网络/限流错误直接返回失败，不隐藏重试。空白响应、截断、无效 JSON/字段/证据均不能变成成功分析。缺正文允许返回可校验的部分分析，但标为信息不足。模型 API、响应模型标识及输出行为将在真实请求后分别记录，不预设返回的模型版本。
+
+## 15. 任务 2.1 实现与独立验证
+
+实现新增 analysis_models.py、model_client.py、analysis.py、tests/test_analysis.py 及 scripts/verify_analysis_live.py。现有 storage/service 仅增加可选只读打开方式，默认采集行为保持兼容；CLI 增加 analyze，原 Notice v1 与原 JSON 导出不增加分析字段。不增加依赖、分析表或工具注册。具体调用、偏好 JSON 和验证命令已写入 README，输出与错误契约只在 agent.md 维护。
+
+首轮新增离线用例发现 fixture 的全角冒号与第一阶段 NFKC 规范化后的正文不同，导致逐字证据校验拒绝引用；修正测试输入以匹配实际通知快照，没有放宽校验。随后 51 项（36 项历史回归与 15 项新增）通过。后续又补充密钥请求头注入的阻断测试；最终测试结果单独记录如下，未用首次失败结果作为通过依据。
+
+真实验证分为两类。原计划将三条已有通知发送到官方 DeepSeek，执行环境自动审批拒绝：既有授权没有具体覆盖这批潜在非公开内容的外发，且正文可能含公开联系人信息。该操作没有执行，不能记录成模型请求失败、网络失败或真实通知分析通过；已向用户说明原因并请求具体授权。该三条真实通知验证仍未开展。
+
+采用安全替代：verify_analysis_live.py 的 --synthetic 仅发送脚本内手写合成文本，不读取校园通知库或用户偏好；通过用户配置的密钥调用真实官方 API，模拟输入不冒充真实采集。首轮证据为 data/phase2-model-synthetic-20261101-01.json：完整样本两次均因 events 类型不符而失败，缺正文样本通过校验且标为信息不足，共三次请求。该失败文件保留。JSON Output 本身没有保证业务 Schema，这是本地严格校验必须保留的实际证据。
+
+补充明确的数组要求和格式示例后，第二轮证据 data/phase2-model-synthetic-20261101-02.json 于 UTC 2026-10-31T19:30:22.070938+00:00（北京时间 11 月 1 日）保存：完整样本 success，缺正文样本 insufficient_information；各一次请求，无错误。完整样本分类 lecture，原文 UTC 报名截止归一化为 2026-11-03T12:00:00+00:00，程序计算为 medium；无偏好相关性为 null。实际返回模型名均为 deepseek-flash，具体版本未返回，保留 null，不以官方文档中的底层版本补填。第二轮另存了未校验的模型 content 与请求 ID，均在忽略目录，不保存认证头或思考链。
+
+以上结论为“真实模型 API 实测可用（合成输入）”，不是“真实校园通知端到端已验证”。没有进行真实通知工具调用、10～15 条样本评估、规则基线打分或分析结果入库。真实通知仍需具体外发授权，任务 2.2 与 2.3 的剩余范围独立保留。
+
+最终回归命令为 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -v`，52 项在 2.351 秒内全部通过（原有 36 项完整保留，新增 16 项覆盖严格字段/证据、未知值、日期时区、紧迫性边界、偏好、只读库、CLI、网络与鉴权失败、有限修正及请求头注入）。compileall 退出码 0，31 个 Markdown 相对链接和对应锚点有效，git diff --check 通过。
+
+现有 .venv 的 pyvenv.cfg 为 include-system-site-packages=true，本轮 pip check 失败原因为系统 PyGObject 依赖 pycairo 缺失，与本项目依赖无关；未安装或修改系统组件。使用既有构建工具离线构建新 wheel 到 data/phase2-wheels/seu_pulse-0.1.0-py3-none-any.whl（SHA-256 55b0148cc38673cbf45eea0fc80b790ff19e242791da1a1e212312ec4366c3f9），未覆盖 data/wheels 的历史产物。干净虚拟环境仅安装此 wheel 与既有 tomli wheel，pip check 返回 No broken requirements found，安装后的 analyze --help 正常。
+
+独立环境以 Python -I 先导入安装包，并确认模块路径位于该环境的 site-packages 后再加载仓库测试，52 项在 2.313 秒内全部通过。日志为 data/phase2-isolated-tests-20261101.log；使用安装包而不是当前目录源码完成复验。上述测试和合成 API 请求没有重新采集来源或修改原始通知；原有数据文件哈希在提交前继续核对。未实现或暗示主动推送、任意工具执行或分析结果入库。

@@ -11,7 +11,13 @@ from .models import FetchResult, Notice, SourceResult, iso_utc, notice_hash
 
 
 class Storage:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, read_only: bool = False):
+        if read_only:
+            self.connection = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro",
+                                              uri=True, timeout=10)
+            self.connection.row_factory = sqlite3.Row
+            self.connection.execute("PRAGMA foreign_keys = ON")
+            return
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(path, timeout=10)
