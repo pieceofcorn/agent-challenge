@@ -141,3 +141,9 @@
 现有 .venv 的 pyvenv.cfg 为 include-system-site-packages=true，本轮 pip check 失败原因为系统 PyGObject 依赖 pycairo 缺失，与本项目依赖无关；未安装或修改系统组件。使用既有构建工具离线构建新 wheel 到 data/phase2-wheels/seu_pulse-0.1.0-py3-none-any.whl（SHA-256 55b0148cc38673cbf45eea0fc80b790ff19e242791da1a1e212312ec4366c3f9），未覆盖 data/wheels 的历史产物。干净虚拟环境仅安装此 wheel 与既有 tomli wheel，pip check 返回 No broken requirements found，安装后的 analyze --help 正常。
 
 独立环境以 Python -I 先导入安装包，并确认模块路径位于该环境的 site-packages 后再加载仓库测试，52 项在 2.313 秒内全部通过。日志为 data/phase2-isolated-tests-20261101.log；使用安装包而不是当前目录源码完成复验。上述测试和合成 API 请求没有重新采集来源或修改原始通知；原有数据文件哈希在提交前继续核对。未实现或暗示主动推送、任意工具执行或分析结果入库。
+
+## 16. 任务 2.1 版本交付
+
+功能提交为 92bd26f061832844e5c7b988a0d6ab1fea9bd6e3（feat: add structured notice analysis with DeepSeek），普通推送将远端 main 从 e58f155 前进到该提交；Git 返回成功，本地 HEAD 与 origin/main 一致。功能提交涉及 13 个文件，39 个当前版本文件逐个扫描暂存内容，未发现本机真实密钥、GitHub Token 或私钥，.env 与 data/ 未跟踪。第一阶段 Notice v1 契约块、原任务归档及原有 60 个数据文件通过原值/哈希比较，均未改变。
+
+推送后按用户流程更新本节与 tasks.md；记录只描述已发生的验证和交付。任务 2.2/2.3 继续保留为未实施，自动审批拒绝的真实通知外发没有重试、绕行或冒充合成验证。模型接口已以合成输入验证；真实通知的外发授权仍为单独待办。

@@ -31,6 +31,7 @@
 - [x] 按用户最新自主选择授权完成设计审查并确认方案，随后更新 agent.md 具体分析契约；设计依据见 phase2-report.md 第 14 节。
 - [x] 实现通知理解、严格校验、程序紧迫性和只读 analyze；无正文标为信息不足，无偏好相关性未知，校验或执行失败不伪装为有效分析。
 - [x] 开发环境 52 项测试（2.351 秒）与独立 wheel 环境 52 项（2.313 秒）通过；compileall、独立 pip check、CLI 帮助、文档链接与差异检查通过。真实 API 合成验证及首轮失败均保留，未将其冒充真实通知评估。
+- [x] 功能提交 92bd26f（feat: add structured notice analysis with DeepSeek）已普通推送到 origin/main；推送后本地 HEAD 与 origin/main 相同。39 个版本文件通过实际密钥与凭据模式检查，未跟踪 .env 或 data/，原有 60 个数据文件哈希及第一阶段任务历史未变。
 
 ## 任务 2.2：最小 Tool Calling
 
