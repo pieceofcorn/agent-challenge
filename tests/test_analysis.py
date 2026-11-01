@@ -2,7 +2,7 @@
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from io import BytesIO, StringIO
+from io import StringIO
 from contextlib import redirect_stdout
 import hashlib
 import json
@@ -12,13 +12,13 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-from urllib.error import HTTPError, URLError
+import httpx2
 
 from seu_pulse.analysis import AnalysisService, compute_urgency, load_preferences
 from seu_pulse.analysis_models import AnalysisValidationError, strict_json, validate_analysis
 from seu_pulse.cli import main
 from seu_pulse.config import Config
-from seu_pulse.model_client import Completion, DeepSeekClient, ModelError, NoRedirect, load_api_key
+from seu_pulse.model_client import Completion, DeepSeekClient, ModelError, load_api_key
 from seu_pulse.models import CollectedNotice, convert_notice
 from seu_pulse.service import PulseService
 from .test_models_storage import SOURCE
@@ -200,7 +200,7 @@ class OutputTests(unittest.TestCase):
         repair_messages = client.calls[1]
         self.assertEqual(repair_messages[-2]["role"], "assistant")
         self.assertEqual(json.loads(repair_messages[-2]["content"]), bad)
-        self.assertIn("raw_text,start,end,evidence", repair_messages[-1]["content"])
+        self.assertIn("evidence", repair_messages[-1]["content"])
 
     def test_time_raw_text_cannot_be_assembled_from_separate_quotes(self):
         value = payload()
@@ -269,52 +269,87 @@ class BoundaryTests(unittest.TestCase):
                     load_api_key(path)
 
     def test_model_transport_request_and_safe_errors(self):
-        opener = Mock()
-        opener.open.return_value = BytesIO(json.dumps({"model": "returned-model", "id": "fixture-id",
-            "choices": [{"finish_reason": "stop", "message": {"content": "{}"}}]}).encode())
-        self.assertEqual(DeepSeekClient("unit-test-value", opener=opener).complete([]).model, "returned-model")
-        request = opener.open.call_args.args[0]
-        self.assertEqual(request.full_url, "https://api.deepseek.com/chat/completions")
-        data = json.loads(request.data)
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx2.Response(200, json={
+                "id": "fixture-id", "object": "chat.completion", "created": 1793491200,
+                "model": "returned-model", "choices": [{
+                    "index": 0, "finish_reason": "tool_calls",
+                    "message": {"role": "assistant", "content": None, "tool_calls": [{
+                        "id": "fixture-call", "type": "function", "function": {
+                            "name": "notice_analysis", "arguments": json.dumps(payload())}}]}}],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 20, "total_tokens": 40}})
+
+        client = DeepSeekClient("unit-test-value", http_transport=httpx2.MockTransport(handler))
+        result = client.complete([{"role": "user", "content": "TEST FIXTURE JSON"}], context=CONTEXT)
+        self.assertEqual(result.model, "returned-model")
+        self.assertEqual(result.request_id, "fixture-id")
+        self.assertEqual(result.requests, 1)
+        self.assertEqual(str(calls[0].url), "https://api.deepseek.com/chat/completions")
+        data = json.loads(calls[0].content)
         self.assertEqual(data["thinking"], {"type": "disabled"})
-        self.assertEqual(data["response_format"], {"type": "json_object"})
+        self.assertNotIn("response_format", data)
+        self.assertEqual(data["tools"][0]["function"]["name"], "notice_analysis")
+        self.assertEqual(data["max_tokens"], 4096)
+        self.assertNotIn("max_completion_tokens", data)
         self.assertFalse(data["stream"])
         for status, code in ((401, "model_auth"), (403, "model_auth"),
                              (429, "model_rate_limit"), (503, "model_http")):
-            opener = Mock()
-            opener.open.side_effect = HTTPError("secret-url", status, "unit-test-value", {}, None)
+            count = []
+
+            def failure(request):
+                count.append(request)
+                return httpx2.Response(status, json={"error": {"message": "unit-test-value"}})
+
             with self.assertRaises(ModelError) as raised:
-                DeepSeekClient("unit-test-value", opener=opener).complete([])
+                DeepSeekClient("unit-test-value", http_transport=httpx2.MockTransport(failure)).complete([])
             self.assertEqual(raised.exception.code, code)
             self.assertNotIn("unit-test-value", str(raised.exception))
-            self.assertEqual(opener.open.call_count, 1)
-        opener = Mock()
-        opener.open.side_effect = URLError("unit-test-value")
+            self.assertEqual(len(count), 1)
+
+        def network(request):
+            raise httpx2.ConnectError("unit-test-value", request=request)
+
         with self.assertRaises(ModelError) as raised:
-            DeepSeekClient("unit-test-value", opener=opener).complete([])
+            DeepSeekClient("unit-test-value", http_transport=httpx2.MockTransport(network)).complete([])
         self.assertEqual(raised.exception.code, "model_network")
-        with self.assertRaises(ModelError):
-            NoRedirect().redirect_request(None, None, 302, "", {}, "https://example.test")
 
     def test_blank_truncated_malformed_and_oversize_model_responses(self):
-        for body, code in (
-            (b"not json", "model_response"), (b'{"choices":[]}', "model_response"),
-            (b'{"choices":[0]}', "model_response"),
-            (b'{"choices":[{"finish_reason":"length"}]}', "model_incomplete"),
-            (b'{"choices":[{"finish_reason":"stop","message":{"content":"  "}}]}', "model_blank"),
-            (b"x" * (512 * 1024 + 1), "model_response_limit"),
-        ):
-            opener = Mock()
-            opener.open.return_value = BytesIO(body)
+        for content, finish, expected in ((" ", "stop", "model_blank"),
+                                          ("{}", "length", "model_incomplete"),
+                                          ("{}", "stop", "invalid_output")):
+            calls = []
+
+            def handler(request):
+                calls.append(request)
+                return httpx2.Response(200, json={
+                    "id": "fixture-id", "object": "chat.completion", "created": 1793491200,
+                    "model": "fixture-model", "choices": [{"index": 0, "finish_reason": finish,
+                        "message": {"role": "assistant", "content": content}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
+
             with self.assertRaises(ModelError) as raised:
-                DeepSeekClient("unit-test-value", opener=opener).complete([])
-            self.assertEqual(raised.exception.code, code)
+                DeepSeekClient("unit-test-value", http_transport=httpx2.MockTransport(handler)).complete([])
+            self.assertEqual(raised.exception.code, expected)
+            self.assertLessEqual(len(calls), 2)
+
+        for response, expected in (
+            (httpx2.Response(302, headers={"Location": "https://example.test"}), "model_redirect"),
+            (httpx2.Response(200, content=b"x" * (512 * 1024 + 1)), "model_response_limit"),
+        ):
+            with self.assertRaises(ModelError) as raised:
+                DeepSeekClient("unit-test-value", http_transport=httpx2.MockTransport(
+                    lambda request: response)).complete([])
+            self.assertEqual(raised.exception.code, expected)
 
     def test_invalid_header_key_never_reaches_transport_or_error_text(self):
-        opener = Mock()
+        handler = Mock()
         with self.assertRaises(ModelError) as raised:
-            DeepSeekClient("unit-test-value\nInjected: value", opener=opener).complete([])
-        opener.open.assert_not_called()
+            DeepSeekClient("unit-test-value\nInjected: value",
+                           http_transport=httpx2.MockTransport(handler)).complete([])
+        handler.assert_not_called()
         self.assertNotIn("unit-test-value", str(raised.exception))
 
     def test_read_only_database_and_cli_exit_codes(self):

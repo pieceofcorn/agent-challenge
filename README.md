@@ -28,7 +28,7 @@ SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目
 | 2.2 最小 Tool Calling | get_notice_detail、get_user_preferences 与按需执行循环 | 尚未实施 |
 | 2.3 结果持久化与评估 | NoticeAnalysis、SQLite 持久化、10～15 条真实通知与规则基线比较 | 尚未实施 |
 
-任务 2.1 使用标准库 urllib/json 接入官方 DeepSeek Flash Chat Completions，无新增 SDK 或 Agent 框架依赖；Schema 与时间/证据校验在本地执行，不把 JSON Output 当字段正确性保证。具体约定见 [分析契约](agent.md#第二阶段扩展说明)，设计依据与实测/失败见第二阶段报告。持续进度仅在 tasks.md 维护。
+任务 2.1 使用 Pydantic AI 2.54.0（兼容 Python 3.10 的固定版本）、严格 Pydantic 输出模型及官方 DeepSeek Flash。框架的 notice_analysis 输出工具只编码结构化返回，不是任务 2.2 的业务读取工具。Schema、原文证据与时间在本地校验，紧迫性仍由程序计算。具体约定见 [分析契约](agent.md#第二阶段扩展说明)，设计依据与实测/失败见第二阶段报告；进度只在 tasks.md 维护。
 
 ## 安装与运行
 
@@ -53,12 +53,12 @@ python3 -m venv /tmp/seu-pulse-review
 /tmp/seu-pulse-review/bin/seu-pulse --help
 ```
 
-以上 data/wheels/ 中保留的是第一阶段历史安装产物。第二阶段需要重建到新目录，避免覆盖历史 wheel；本次也按此方式在不继承系统包的独立环境验证安装：
+data/wheels/ 保留第一阶段历史安装产物，data/phase2-wheels/ 保留引入框架前的任务 2.1 wheel。当前版本使用下列新目录保存项目与 Pydantic AI 依赖，避免覆盖历史产物：
 
 ```bash
-.venv/bin/python -m pip wheel --no-deps --no-build-isolation --no-index --wheel-dir data/phase2-wheels .
+.venv/bin/python -m pip wheel --no-build-isolation --wheel-dir data/pydantic-ai-wheels .
 python3 -m venv /tmp/seu-pulse-phase2-review
-/tmp/seu-pulse-phase2-review/bin/python -m pip install --no-index --find-links data/wheels data/phase2-wheels/seu_pulse-0.1.0-py3-none-any.whl
+/tmp/seu-pulse-phase2-review/bin/python -m pip install --no-index --find-links data/pydantic-ai-wheels seu-pulse
 /tmp/seu-pulse-phase2-review/bin/python -m pip check
 /tmp/seu-pulse-phase2-review/bin/seu-pulse analyze --help
 ```
@@ -276,7 +276,7 @@ data/ 中的原始 HTML、历史失败与验收 JSON、测试日志、数据库�
 {"interests": [], "keywords": [], "focus_areas": []}
 ```
 
-结果分别包含模型理解、程序计算的逐截止点紧迫性、来源内容指纹、输入/偏好哈希、UTC 时间、实际响应模型标识及错误。所有字段、时间及空值约定集中见 agent.md。每条最多两次模型调用尝试，网络或鉴权失败不会隐藏重试。当前模型名固定 deepseek-flash，无法确认的具体版本保持 null。
+结果分别包含模型理解、程序计算的逐截止点紧迫性、来源内容指纹、输入/偏好/提示哈希、UTC 时间、实际响应模型与框架版本及错误。字段与空值约定集中见 agent.md。Pydantic AI 负责严格类型与一次输出修正，UsageLimits 将单条模型请求限制为两次，程序不叠加修正次数，SDK 网络重试为零。模型名固定 deepseek-flash，无法确认的模型具体版本保持 null。
 
 离线回归与模型接入分别验证。合成模式只发送脚本中手写的测试文本，不读取校园通知、通知库或用户偏好；它是真实 API 验证，不是真实校园通知评估：
 

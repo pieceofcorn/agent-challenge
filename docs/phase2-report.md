@@ -165,3 +165,25 @@
 三条均无用户偏好，相关性均为 null。只核查这三条的接口、结构、证据和未知值表现，不计算分类准确率或冒充任务 2.3 评估，也未进行工具调用或分析入库。生产数据库只读，先前证据文件继续保留。
 
 验证期间用户追加“引入 Pydantic AI”。将迁移前的真实结果作为对照保留，随后实施框架接入。官方当前安装文档要求 Python 3.11+；PyPI 官方元数据给出当前 2.64.0 要求 >=3.11，而兼容本项目 Python 3.10.12 的最新稳定版为 2.54.0（Requires-Python >=3.10）。已下载其官方 wheel 核查接口；尚未因下载或文档核对声称框架实测通过。
+
+## 18. Pydantic AI 实际接入与验证
+
+按用户明确要求，将 setup.cfg 的运行依赖固定为 pydantic-ai-slim[openai]==2.54.0，仅安装所需提供方依赖，不改系统 Python。选型核对了[官方安装说明](https://pydantic.dev/docs/ai/overview/install/)、[结构化输出与校验说明](https://pydantic.dev/docs/ai/core-concepts/output/)及 [PyPI 元数据](https://pypi.org/pypi/pydantic-ai-slim/json)，并读取实际下载的 2.54.0 wheel 源码和签名，避免直接套用新版文档。实装版本为 Pydantic AI 2.54.0、Pydantic 2.14.2、OpenAI SDK 3.42.0、httpx2 2.14.0。
+
+analysis_models.py 以严格 Pydantic BaseModel 定义结构，配置 extra=forbid/strict=True；MODEL_OUTPUT_SCHEMA 由模型生成，保留原字段、未知值及证据语义。DeepSeekClient 使用 Pydantic AI Agent、OpenAIChatModel、DeepSeekProvider 与 ToolOutput(AnalysisOutput, name=notice_analysis, strict=False)。该输出工具只承载最终 JSON 参数，不读取通知或偏好，不执行 Shell、文件或自由联网；未注册任务 2.2 的两个业务工具，因此不作为 2.2 验收。
+
+原文证据、日期/时区、重复 JSON key 和原始参数 JSON 格式仍由本地严格检查；接入框架 output_validator 并用 ModelRetry 反馈。输出重试最多一次、UsageLimits(request_limit=2)，AnalysisService 不再叠加生产路径的外层修正；SDK 网络重试为零。框架版本与真实请求数进入程序封装，模型的未知具体版本仍为 null。请求继续固定到官方 DeepSeek，显式使用 max_tokens、关闭思考/流式及重定向，限制 512 KiB 响应，不继承其他 OpenAI 组织/项目身份，不配置外部追踪；关闭默认横幅保持 CLI JSON 输出。
+
+迁移中保留失败：提示式 JSON 输出的 data/phase2-pydantic-live-20261101-01.json 为 success/failed/insufficient_information，共五次请求。报名通知仍重复构造一个无完整连续原文依据的截止，严格校验拒绝。随后采用框架官方默认推荐的 ToolOutput 结构化输出方式，保留原语义与请求上限，而非放宽证据规则。该变化不提供业务工具权限。
+
+最终框架真实证据为 data/phase2-pydantic-live-20261101-02.json，于 UTC 2026-11-01T05:12:07.896834+00:00 保存。仍只处理已获授权的三条通知：公示 success/一次请求，拔尖班 success/两次请求（含一次框架修正），缺正文通知 insufficient_information/一次请求；总四次，实际模型均为 deepseek-flash，框架标识 pydantic-ai/2.54.0。报名通知保留三个活动和一个报名截止，原文没有时区，因此 UTC 截止与紧迫性为 null；无偏好相关性均为 null。数据库前后哈希相同；失败、迁移前对照和本轮数据文件均未覆盖。
+
+离线验证新增七项框架级用例：真实 Agent/严格输出模型、嵌套结构修正、语义证据修正、两次请求边界、重复键/代码围栏拒绝、未知时区防补全、未注册工具无执行器。SDK 传输测试改用 MockTransport 检查官方端点、输出工具、max_tokens、网络/鉴权错误及响应边界；原有 36 项第一阶段测试未删除或替换。完整 61 项在开发环境 2.939 秒通过，compileall 与差异检查通过。
+
+执行环境诊断与产品错误分开记录：最小 asyncio.to_thread 探测在当前受限沙箱中超时退出 124，同一无文件/网络操作的探测获准沙箱外立即返回成功；纯异步 FunctionModel 在沙箱内也通过。据此定位为沙箱线程唤醒限制，未当作 DeepSeek 网络失败或版本不兼容。框架离线测试获准在沙箱外执行，所有模型/HTTP 均为 fixture、FunctionModel 或 MockTransport，不外发真实数据。初期 FunctionModel 名称断言及嵌套网络异常分类问题已由固定模拟模型标识和保留安全异常链分类修正；未注册工具请求归为 invalid_output，未执行任何工具。
+
+构建新的 data/pydantic-ai-wheels/seu_pulse-0.1.0-py3-none-any.whl，SHA-256 为 6715dd1229fa7580e2b63203409d75a3688b14214bce72eee81b4be6adf99b65；该目录另保存公开依赖 wheel，未覆盖旧产物。干净环境完全离线安装，pip check 无依赖缺失，安装后的 analyze --help 正常。以 Python -I 先确认实际导入 site-packages 中的安装包，再运行 61 项测试，3.106 秒全部通过；日志 data/phase2-pydantic-isolated-tests-20261101.log。旧 .venv 继承系统包的 PyGObject/pycairo 问题不作为项目依赖故障处理，未修改系统组件。
+
+用户询问修改沙箱权限后，按官方 OpenAI 文档核对本机 Codex CLI 0.166.0 和用户配置：sandbox_workspace_write.network_access 已为 true，但当前运行会话仍被下发为联网受限，不能据配置值声称运行策略已经改变。用户确认从 VS Code 的 WSL Ubuntu 内置终端启动，已给出 codex --approve-for-me -c 'sandbox_workspace_write.network_access=true' resume --last 的恢复方式；待当前交付保存后由用户恢复，再在沙箱内复测。没有编辑用户全局安全配置或绕过现有执行策略。
+
+用户随后补充失败中止要求，已更新仓库现有 AGENTS.md，并通过差异检查；不在数据契约或本报告重复维护执行规则。沙箱生效检查留待用户恢复后进行，没有继续重复受限环境中的失败探测。

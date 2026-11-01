@@ -40,13 +40,15 @@ class RecordingClient:
     def __init__(self, client):
         self.client = client
         self.provider, self.model = client.provider, client.model
+        self.manages_retries = client.manages_retries
+        self.framework, self.framework_version = client.framework, client.framework_version
         self.outputs = []
 
-    def complete(self, messages):
-        result = self.client.complete(messages)
-        self.outputs.append({"model": result.model, "request_id": result.request_id,
-                             "content": result.content})
-        return result
+    def complete(self, messages, *, context=None):
+        try:
+            return self.client.complete(messages, context=context)
+        finally:
+            self.outputs.extend(self.client.last_outputs)
 
 
 def main(argv=None):
@@ -94,6 +96,7 @@ def main(argv=None):
         "mode": "live_model_synthetic_input" if args.synthetic else "live_model_existing_notices_no_fixtures",
         "verified_at": iso_utc(utcnow()),
         "provider": "deepseek", "requested_model": "deepseek-flash", "as_of": iso_utc(as_of),
+        "framework": client.framework, "framework_version": client.framework_version,
         "database_unchanged": None if args.synthetic else before == after, "database_sha256_before": before,
         "database_sha256_after": after, "sources": sources, "results": results,
         "raw_outputs_unvalidated": client.outputs,

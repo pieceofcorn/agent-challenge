@@ -4,79 +4,98 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 import json
 import re
+from typing import Annotated, Generic, Literal, TypeVar
+
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
 
 
 class AnalysisValidationError(ValueError):
     """Messages contain schema paths only, never untrusted model text."""
 
 
-def obj(**properties):
-    return {"type": "object", "properties": properties, "required": list(properties),
-            "additionalProperties": False}
+def nonblank(value):
+    if not value.strip():
+        raise ValueError("文本须非空白")
+    return value
 
 
-def nullable(schema):
-    return {**schema, "type": [schema["type"], "null"]}
+Text = Annotated[str, Field(min_length=1), AfterValidator(nonblank)]
+T = TypeVar("T")
+Level = Literal["high", "medium", "low"]
+Category = Literal["competition", "lecture", "research", "activity",
+                   "academic_affairs", "exchange", "scholarship", "other"]
 
 
-TEXT = {"type": "string", "minLength": 1}
-EVIDENCE_FIELDS = ("notice.title", "notice.summary", "notice.content",
-                   "preferences.interests", "preferences.keywords", "preferences.focus_areas")
-EVIDENCE = obj(field={"type": "string", "enum": list(EVIDENCE_FIELDS)}, quote=TEXT)
-EVIDENCES = {"type": "array", "items": EVIDENCE}
-POINT = obj(date=nullable(TEXT), time=nullable(TEXT), utc_offset=nullable(TEXT))
-TIME_RANGE = obj(raw_text=TEXT, start=nullable(POINT), end=nullable(POINT), evidence=EVIDENCES)
-LOCATION = obj(mode={"type": ["string", "null"], "enum": ["online", "offline", "hybrid", None]},
-               name=nullable(TEXT), evidence=EVIDENCES)
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
 
 
-def decision(kind, values):
-    return obj(value={"type": [kind, "null"], "enum": [*values, None]},
-               reason=TEXT, evidence=EVIDENCES)
+class Evidence(StrictModel):
+    field: Literal["notice.title", "notice.summary", "notice.content",
+                   "preferences.interests", "preferences.keywords", "preferences.focus_areas"]
+    quote: Text
 
 
-MODEL_OUTPUT_SCHEMA = obj(
-    category=decision("string", ["competition", "lecture", "research", "activity",
-                                 "academic_affairs", "exchange", "scholarship", "other"]),
-    importance=decision("string", ["high", "medium", "low"]),
-    relevance=decision("string", ["high", "medium", "low"]),
-    action_required=decision("boolean", [True, False]),
-    events=nullable({"type": "array", "items": obj(
-        label=TEXT, time=nullable(TIME_RANGE), location=nullable(LOCATION), evidence=EVIDENCES)}),
-    registration_deadlines=nullable({"type": "array", "items": obj(
-        label=TEXT, raw_text=TEXT, at=nullable(POINT), evidence=EVIDENCES)}),
-    limitations={"type": "array", "items": obj(field=TEXT, reason=TEXT)},
-)
+class Decision(StrictModel, Generic[T]):
+    value: T | None
+    reason: Text
+    evidence: list[Evidence] = Field(max_length=40)
+
+
+class TimePoint(StrictModel):
+    date: Text | None
+    time: Text | None
+    utc_offset: Text | None
+
+
+class TimeRange(StrictModel):
+    raw_text: Text
+    start: TimePoint | None
+    end: TimePoint | None
+    evidence: list[Evidence] = Field(max_length=40)
+
+
+class Location(StrictModel):
+    mode: Literal["online", "offline", "hybrid"] | None
+    name: Text | None
+    evidence: list[Evidence] = Field(max_length=40)
+
+
+class Event(StrictModel):
+    label: Text
+    time: TimeRange | None
+    location: Location | None
+    evidence: list[Evidence] = Field(max_length=40)
+
+
+class Deadline(StrictModel):
+    label: Text
+    raw_text: Text
+    at: TimePoint | None
+    evidence: list[Evidence] = Field(max_length=40)
+
+
+class Limitation(StrictModel):
+    field: Text
+    reason: Text
+
+
+class AnalysisOutput(StrictModel):
+    category: Decision[Category]
+    importance: Decision[Level]
+    relevance: Decision[Level]
+    action_required: Decision[bool]
+    events: list[Event] | None = Field(max_length=40)
+    registration_deadlines: list[Deadline] | None = Field(max_length=40)
+    limitations: list[Limitation] = Field(max_length=40)
+
+
+MODEL_OUTPUT_SCHEMA = AnalysisOutput.model_json_schema()
 
 
 def fail(path, hint=None):
     suffix = f"；{hint}" if hint else ""
     raise AnalysisValidationError(f"不符合分析契约: {path}{suffix}")
-
-
-def validate_shape(value, schema, path="$"):
-    kinds = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
-    matches = {"null": value is None, "string": type(value) is str,
-               "boolean": type(value) is bool, "array": type(value) is list,
-               "object": type(value) is dict}
-    if not any(matches.get(k, False) for k in kinds):
-        fail(path, "要求类型 " + "/".join(kinds))
-    if "enum" in schema and not any(type(value) is type(v) and value == v for v in schema["enum"]):
-        fail(path)
-    if value is None:
-        return
-    if type(value) is str and not value.strip():
-        fail(path)
-    if type(value) is dict:
-        if set(value) != set(schema["properties"]):
-            fail(path + ".fields", "必需且仅允许字段 " + ",".join(schema["properties"]))
-        for key, child in schema["properties"].items():
-            validate_shape(value[key], child, path + "." + key)
-    if type(value) is list:
-        if len(value) > 40:
-            fail(path + ".length")
-        for index, child in enumerate(value):
-            validate_shape(child, schema["items"], f"{path}[{index}]")
 
 
 def strict_json(text):
@@ -189,7 +208,14 @@ def validate_point(point, raw, path):
 
 
 def validate_analysis(value, context):
-    validate_shape(value, MODEL_OUTPUT_SCHEMA)
+    try:
+        value = AnalysisOutput.model_validate(value, strict=True).model_dump(mode="json")
+    except ValidationError as exc:
+        error = exc.errors(include_input=False, include_url=False, include_context=False)[0]
+        path = "$" + "".join(f"[{p}]" if isinstance(p, int) else "." + str(p) for p in error["loc"])
+        if not re.fullmatch(r"[\w.$\[\]]+", path):
+            path = "$.fields"
+        fail(path, "Pydantic 结构校验失败")
     for field in ("category", "importance", "relevance", "action_required"):
         item = value[field]
         if item["evidence"]:

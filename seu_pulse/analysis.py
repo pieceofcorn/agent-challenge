@@ -118,6 +118,8 @@ class AnalysisService:
             "analyzed_at": None, "as_of": iso_utc(as_of), "analysis": None, "urgency": None,
             "model_info": {"provider": self.client.provider, "requested_model": self.client.model,
                            "returned_model": None, "model_version": None, "request_id": None},
+            "framework_info": {"name": getattr(self.client, "framework", None),
+                               "version": getattr(self.client, "framework_version", None)},
             "model_requests": 0, "warnings": [], "error": None,
         }
         try:
@@ -143,11 +145,18 @@ class AnalysisService:
             return self._failed(result, "input_limit", "通知与偏好超出单次分析输入限制")
         messages = [{"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_content}]
-        for attempt in range(2):
+        managed = getattr(self.client, "manages_retries", False)
+        attempt_limit = 1 if managed else 2
+        for attempt in range(attempt_limit):
             result["model_requests"] += 1
             completion = None
             try:
-                completion = self.client.complete(messages)
+                completion = (self.client.complete(messages, context=context) if managed
+                              else self.client.complete(messages))
+                if managed:
+                    result["model_requests"] = completion.requests
+                    if completion.requests > 1:
+                        result["warnings"].append("output_repair_attempted")
                 result["model_info"].update(returned_model=completion.model, request_id=completion.request_id)
                 analysis = validate_analysis(strict_json(completion.content), context)
                 result["analysis"] = analysis
@@ -159,9 +168,15 @@ class AnalysisService:
                 code, message = "invalid_output", str(exc)
             except ModelError as exc:
                 code, message = exc.code, exc.message
+                if managed:
+                    result["model_requests"] = exc.requests if exc.requests is not None else 0
+                    result["model_info"].update(returned_model=exc.model, request_id=exc.request_id)
+                    if result["model_requests"] > 1:
+                        result["warnings"].append("output_repair_attempted")
+                    return self._failed(result, code, message)
                 if code not in {"model_blank", "model_incomplete"}:
                     return self._failed(result, code, message)
-            if attempt == 0:
+            if attempt + 1 < attempt_limit:
                 result["warnings"].append("output_repair_attempted")
                 # The previous answer is needed to correct a specific nested error rather than regenerate blindly.
                 # It remains untrusted data under SYSTEM_PROMPT; credentials are never included in model content.

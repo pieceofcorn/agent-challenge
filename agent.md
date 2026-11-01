@@ -65,7 +65,7 @@ as_of 为带时区 datetime，默认程序时钟。输入快照为通知 id/sour
 
 ### 模型输出 Schema
 
-可执行定义与校验位于 [analysis_models.py](seu_pulse/analysis_models.py) 的 MODEL_OUTPUT_SCHEMA。所有对象字段必需且不接受额外字段；非空字符串拒绝纯空白，各数组最多 40 项。表中 ? 允许 JSON null，不能用空字符串或缺字段表达未知。
+可执行定义位于 [analysis_models.py](seu_pulse/analysis_models.py) 的严格 Pydantic AnalysisOutput 及其嵌套模型，MODEL_OUTPUT_SCHEMA 由 model_json_schema 生成，不另行手写维护。所有对象字段必需且不接受额外字段；非空字符串拒绝纯空白，各数组最多 40 项。表中 ? 允许 JSON null，不能用空字符串或缺字段表达未知。
 
 | 字段 | 类型及含义 |
 | --- | --- |
@@ -103,15 +103,17 @@ Evidence.field 只允许 notice.title/notice.summary/notice.content 和 preferen
 
 ### 程序封装与错误
 
-输出含 analysis_schema_version="1"、status、notice_id、notice_content_hash、input_hash、preferences_hash、prompt_hash、analyzed_at、as_of、analysis、urgency、model_info、model_requests、warnings、error。分析版本与 Notice 导出版本分开；prompt_hash 覆盖系统指令、输出 Schema 与格式示例，model_requests 记录客户端调用尝试次数，不证明请求已到达服务器或产生计费。
+输出含 analysis_schema_version="1"、status、notice_id、notice_content_hash、input_hash、preferences_hash、prompt_hash、analyzed_at、as_of、analysis、urgency、model_info、framework_info、model_requests、warnings、error。framework_info={name,version} 记录实际框架与安装版本，当前为 pydantic-ai/2.54.0。分析版本与 Notice 导出版本分开；prompt_hash 覆盖系统指令、输出 Schema 与格式示例，model_requests 取框架 RunUsage 的请求次数，不证明请求已产生计费；配置错误尚未请求模型时为 0。
 
 status 为 success / insufficient_information / failed。缺正文且部分输出通过校验时为 insufficient_information；无偏好仅影响相关性和 warnings，不单独令整体失败。失败时 analysis/urgency 为 null，error={code,message}；其他情况 error=null。时间由程序生成 UTC ISO 字符串。无通知时相关哈希为 null，不伪造内容指纹。
 
 model_info={provider, requested_model, returned_model, model_version, request_id}；requested_model 当前为 deepseek-flash，返回标识和请求 ID 取实际响应；无法确认的版本为 null，不把文档中别名底层版本当实际回包版本。input_hash 覆盖输入数据快照，不等同于保存快照；完整持久化由任务 2.3 定义。
 
-最多两次模型请求（初次 + 一次输出修正），每次 HTTP 超时 60 秒、max_tokens=4096、响应上限 512 KiB。空白、截断、JSON/字段/证据/时间错误允许一次修正；鉴权、网络、限流、响应结构错误不隐式重试。不以抽取 JSON 片段、补字段、类型强转或规则猜测修复。错误 code 包括 notice_not_found/notice_read/input_limit/invalid_output、credential_config/model_unavailable，以及 model_auth/model_network/model_rate_limit/model_http/model_redirect/model_response/model_response_limit/model_blank/model_incomplete。
+最多两次模型请求（初次 + 一次输出修正），由 Pydantic AI 的输出重试预算与 UsageLimits(request_limit=2) 共同限制，程序不再叠加外层重试。每次 HTTP 超时 60 秒、max_tokens=4096、响应上限 512 KiB，外层 asyncio.wait_for 设为 2*timeout+5 秒。SDK 网络重试为零，鉴权、网络与限流失败不隐式重试。严格校验原始输出参数 JSON，不以抽取片段、补字段、类型强转或规则猜测修复；Pydantic 验证后仍校验原文证据、时间和空值。新增框架错误 code 为 model_request_limit/model_framework，原有 notice_not_found/notice_read/input_limit/invalid_output、credential_config/model_unavailable、model_auth/model_network/model_rate_limit/model_http/model_redirect/model_response_limit/model_blank/model_incomplete 继续区分。
 
-模型采用官方 HTTPS Chat Completions、非流式非思考模式与 json_object；无 SDK 或 Agent 框架依赖。密钥优先读进程 DEEPSEEK_API_KEY，否则只读 --env-file 文件同名项（默认 .env）。文件须为仅当前用户可读的常规文件，不执行 shell 或展开变量，不向结果/日志写密钥；拒绝接口重定向以保护认证头。
+模型通过 Pydantic AI Agent、OpenAIChatModel、DeepSeekProvider 和官方 OpenAI 兼容 SDK 请求官方 HTTPS Chat Completions；使用非流式非思考模式。输出为 ToolOutput(AnalysisOutput, name="notice_analysis", strict=False)，不启用 DeepSeek beta strict 或原生 JSON Schema 模式。notice_analysis 仅编码最终结果，不执行业务操作；框架校验失败通过 ModelRetry 在同一 Agent 中修正。未注册 get_notice_detail/get_user_preferences 或其他业务、Shell、文件和自由联网工具，不能据此验收任务 2.2。
+
+密钥优先读进程 DEEPSEEK_API_KEY，否则只读 --env-file 文件同名项（默认 .env）。文件须为仅当前用户可读的常规文件，不执行 shell 或展开变量，不向结果/日志写密钥。HTTP 客户端拒绝重定向并限制响应体，禁用 SDK 自动重试，不继承其他 OpenAI 项目的组织/项目身份；不配置外部追踪或 Agent workspace，关闭框架横幅以保持 CLI JSON 输出。
 
 ### 后续工具与存储
 
