@@ -323,3 +323,5 @@ docs/phase23-evaluation-review.md已重新组织，撤回按“主体是学院/�
 当前只提交待确认草稿，旧签审请求暂停，不把此前的模型外发授权当作新产品或参考认可。待确认包括推送资格政策、较紧急边界、截止等于as_of，以及事项结构/拆分与参考；确认前保持draft，不改可执行契约或编码，不冻结、不评分。
 
 草稿提交前检查：52个候选版本文件通过实际.env密钥、GitHub Token/私钥模式检查，无命中；.env仍为600且未跟踪，data/未跟踪。新审查稿15个编号均存在，旧“建议行动/内容重要性”参考列已移除；Markdown表格、链接/锚点及git diff --check通过。只读核对输出保存在data/phase23-product-review-audit-20261102.log。未新增或重跑业务测试，因此不把历史100项当成本轮新验证。
+
+草稿交付：f981097（docs: draft matter extraction and layered evaluation redesign）已普通推送至origin/main，HEAD/远端跟踪引用一致；7个版本文件仅为文档，其中新增数据结构建议。未将提交当作人工参考冻结；下一步等待用户确认修正版，不继续旧action签审，不修改当前业务实现，不产生评分。
