@@ -187,3 +187,5 @@ analysis_models.py 以严格 Pydantic BaseModel 定义结构，配置 extra=forb
 用户询问修改沙箱权限后，按官方 OpenAI 文档核对本机 Codex CLI 0.166.0 和用户配置：sandbox_workspace_write.network_access 已为 true，但当前运行会话仍被下发为联网受限，不能据配置值声称运行策略已经改变。用户确认从 VS Code 的 WSL Ubuntu 内置终端启动，已给出 codex --approve-for-me -c 'sandbox_workspace_write.network_access=true' resume --last 的恢复方式；待当前交付保存后由用户恢复，再在沙箱内复测。没有编辑用户全局安全配置或绕过现有执行策略。
 
 用户随后补充失败中止要求，已更新仓库现有 AGENTS.md，并通过差异检查；不在数据契约或本报告重复维护执行规则。沙箱生效检查留待用户恢复后进行，没有继续重复受限环境中的失败探测。
+
+本轮规则提交 89651ea 与框架功能提交 6c67bcb 已普通推送，功能推送后 HEAD 与 origin/main 一致。提交前扫描全部 40 个版本文件，无真实密钥、Token 或私钥，.env/data 未跟踪；本轮开始前已有的 65 个数据文件哈希未变，Notice v1 契约块及第一阶段任务归档原文未变。新 wheel 的 12 个模块逐字节匹配当前源码。按用户流程，在推送成功后补记交付记录；未运行任务 2.2/2.3 或更改全局沙箱策略。
