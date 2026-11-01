@@ -115,6 +115,23 @@ model_info={provider, requested_model, returned_model, model_version, request_id
 
 密钥优先读进程 DEEPSEEK_API_KEY，否则只读 --env-file 文件同名项（默认 .env）。文件须为仅当前用户可读的常规文件，不执行 shell 或展开变量，不向结果/日志写密钥。HTTP 客户端拒绝重定向并限制响应体，禁用 SDK 自动重试，不继承其他 OpenAI 项目的组织/项目身份；不配置外部追踪或 Agent workspace，关闭框架横幅以保持 CLI JSON 输出。
 
-### 后续工具与存储
+### 任务 2.2 工具循环契约
 
-get_notice_detail/get_user_preferences 的参数、返回对象与真正执行循环由任务 2.2 定义；任务 2.1 的通知理解与有限输出修正不作为 Tool Calling。NoticeAnalysis 持久化对象、SQLite 分析表和写入接口由任务 2.3 定义；当前不建分析表，不把失败或信息不足结果当成功分析入库。
+`analyze` 保留上述 2.1 行为。`agent-analyze` 使用同一输出 Schema 和证据/紧迫性校验，但在同一个 Pydantic AI Agent 中注册两个业务工具。默认初始输入只有通知列表字段（正文为 null）和偏好可用性，不提前读偏好文件；可显式包含初始正文或初始偏好，让模型选择无需工具。正文/工具返回均为不可信数据，不能授权新操作。工具只能访问本次指定通知和调用者指定的偏好配置，不接受 SQL、路径、URL 或 Shell 参数。
+
+| 工具 | 参数（禁止额外字段、强制类型） | 返回 |
+| --- | --- | --- |
+| get_notice_detail | {notice_id:string}，只接受本次通知 ID | {status, notice}；status=ok/missing_content/not_found/read_error/notice_changed/input_limit/timeout；notice 为必要来源字段、原文正文，失败时 null |
+| get_user_preferences | {} | {status, preferences}；status=ok/missing/read_error/input_limit/timeout；缺失或失败时 preferences=null |
+
+通知工具读取已有 SQLite，不采集、不下载、不访问网站；每次在工作线程新建只读连接，不跨线程复用原连接。读取的 content_hash 必须等于初始版本，变化即失败，防止混用两个版本。偏好仅由已有严格 JSON 读取器验证。工具返回大小受 64000 字符上下文限制，超限不截断、不编造；已读取结果在单次运行内缓存，重复请求仍计入次数。读取超时后忽略迟到结果，后台只读线程可能稍后结束，不保证强制终止底层系统调用。
+
+默认预算：模型请求最多 6 次（包含输出修正）、业务工具请求最多 4 次（含重复和非法请求，最终 notice_analysis 不计入）、单次 HTTP 60 秒、单次工具读取 5 秒、整个异步运行 180 秒；均可配置正数，工具次数允许 0。一次响应批量请求超预算时整批不执行。未知工具、非法参数或越界通知 ID 立即失败，不交给任意执行器；SDK 重试为零，结构/证据输出最多修正一次。网络、鉴权、预算及整体超时明确终止，保留已发生的调用。
+
+程序只用初始已提供和实际工具返回的信息校验证据；未读取正文不能引用隐藏正文。工具返回必须回传到同一个 Agent 的后续请求，才允许其生成最终分析；禁止在同一响应里同时请求业务工具和最终输出。成功读取后更新 input_hash/preferences_hash，prompt_hash 另覆盖工具指令与预算；不改 Notice v1 或 analysis_schema_version。缺正文或工具读取失败后仍有合法部分分析时为 insufficient_information，warnings 明示失败；无偏好仍令相关性未知。通知版本变化为 failed，analysis/urgency=null。模型仍自行决定重要性和相关性，紧迫性仍由程序计算。
+
+`agent_trace` 独立记录 trace_version、初始可见字段与输入哈希、预算、模型请求序号、业务工具名、经过校验的通知 ID 参数、实际执行/缓存状态、结果状态/摘要哈希、耗时、下一次请求反馈标记及终止原因；call_id 也是哈希，避免模型自由生成的标识夹带原文。不记录原始正文、偏好值、文件路径、密钥、模型推理或任意非法参数。调用记录只能证明程序观察到的请求和执行，不能证明模型内部思考。
+
+### 后续存储
+
+NoticeAnalysis 持久化对象、SQLite 分析表和写入接口由任务 2.3 定义；当前不建分析表，不把失败或信息不足结果当成功分析入库。

@@ -85,13 +85,18 @@ class BoundedStream(httpx2.AsyncByteStream):
 
 
 class ResponseCapture(WrapperModel):
-    def __init__(self, wrapped):
+    def __init__(self, wrapped, tool_run=None):
         super().__init__(wrapped)
         self.responses = []
+        self.tool_run = tool_run
 
     async def request(self, messages, model_settings, model_request_parameters):
+        if self.tool_run is not None:
+            self.tool_run.before_request(messages)
         response = await super().request(messages, model_settings, model_request_parameters)
         self.responses.append(response)
+        if self.tool_run is not None:
+            self.tool_run.after_response(response)
         return response
 
 
@@ -128,16 +133,18 @@ class DeepSeekClient:
                 return part.args_as_json_str()
         return "".join(p.content for p in response.parts if isinstance(p, TextPart))
 
-    async def _run_agent(self, model, messages, context, usage):
+    async def _run_agent(self, model, messages, context, usage, tool_run=None):
         instructions = "\n".join(m["content"] for m in messages if m["role"] == "system")
         prompt = "\n".join(m["content"] for m in messages if m["role"] == "user")
-        captured = ResponseCapture(model)
+        captured = ResponseCapture(model, tool_run)
         agent = Agent(
             captured, output_type=ToolOutput(AnalysisOutput, name=self.output_tool_name,
                                             strict=False, max_retries=1), deps_type=dict,
             system_prompt=instructions, name="seu-pulse-information",
             retries={"output": 1, "tools": 0},
-            model_settings={"max_tokens": self.max_tokens, "timeout": self.timeout, "max_retries": 0,
+            tools=tool_run.tools() if tool_run is not None else (),
+            model_settings={"max_tokens": self.max_tokens,
+                            "timeout": tool_run.limits.request_timeout if tool_run else self.timeout, "max_retries": 0,
                             "extra_body": {"thinking": {"type": "disabled"}}},
         )
 
@@ -148,7 +155,9 @@ class DeepSeekClient:
             response = captured.responses[-1]
             raw = self._output_content(response)
             try:
-                if any(isinstance(p, ToolCallPart) and p.tool_name != self.output_tool_name
+                if tool_run is not None:
+                    tool_run.validate_final()
+                elif any(isinstance(p, ToolCallPart) and p.tool_name != self.output_tool_name
                        for p in response.parts):
                     raise AnalysisValidationError("不允许请求业务或任意工具")
                 if response.finish_reason not in (None, "stop", "tool_call", "tool_calls"):
@@ -167,7 +176,8 @@ class DeepSeekClient:
 
         try:
             result = await agent.run(prompt, deps=context or {}, usage=usage,
-                                     usage_limits=UsageLimits(request_limit=2), infer_name=False)
+                                     usage_limits=UsageLimits(request_limit=(tool_run.limits.max_requests
+                                                                           if tool_run else 2)), infer_name=False)
             response = result.response
             raw = self._output_content(response)
             return Completion(raw, response.model_name, response.provider_response_id, usage.requests)
@@ -179,29 +189,32 @@ class DeepSeekClient:
                 for m in captured.responses
             ]
 
-    async def _run(self, messages, context, usage):
+    async def _run(self, messages, context, usage, tool_run=None):
         if self.agent_model is not None:
-            return await self._run_agent(self.agent_model, messages, context, usage)
+            return await self._run_agent(self.agent_model, messages, context, usage, tool_run)
         key = validate_api_key(self._api_key) if self._api_key is not None else load_api_key(self.env_file)
         async with httpx2.AsyncClient(
-            timeout=self.timeout, follow_redirects=False, transport=self.http_transport,
+            timeout=tool_run.limits.request_timeout if tool_run else self.timeout,
+            follow_redirects=False, transport=self.http_transport,
             event_hooks={"response": [self._guard_response]},
         ) as http:
             async with openai.AsyncOpenAI(
-                api_key=key, base_url="https://api.deepseek.com", timeout=self.timeout,
+                api_key=key, base_url="https://api.deepseek.com",
+                timeout=tool_run.limits.request_timeout if tool_run else self.timeout,
                 max_retries=0, http_client=http, organization="", project="",
             ) as sdk:
                 model = OpenAIChatModel(
                     self.model, provider=DeepSeekProvider(openai_client=sdk),
                     profile=OpenAIModelProfile(openai_chat_supports_max_completion_tokens=False))
-                return await self._run_agent(model, messages, context, usage)
+                return await self._run_agent(model, messages, context, usage, tool_run)
 
-    def complete(self, messages, *, context=None):
+    def complete(self, messages, *, context=None, tool_run=None):
         self.last_outputs = []
         usage = RunUsage()
         try:
             return asyncio.run(asyncio.wait_for(
-                self._run(messages, context, usage), timeout=self.timeout * 2 + 5))
+                self._run(messages, context, usage, tool_run),
+                timeout=tool_run.limits.run_timeout if tool_run else self.timeout * 2 + 5))
         except Exception as exc:
             root = exc
             chain = []
@@ -214,6 +227,8 @@ class DeepSeekClient:
                 e, (ModelHTTPError, openai.APIStatusError))), None)
             if isinstance(root, ModelError):
                 code, message = root.code, root.message
+            elif isinstance(exc, (TimeoutError, asyncio.TimeoutError)) and tool_run is not None:
+                code, message = "agent_timeout", "Agent 运行达到总时限"
             elif http_error is not None:
                 status = http_error.status_code
                 code = "model_auth" if status in (401, 403) else (
@@ -224,7 +239,7 @@ class DeepSeekClient:
                      for e in chain):
                 code, message = "model_network", "模型网络请求失败或超时"
             elif isinstance(exc, UsageLimitExceeded):
-                code, message = "model_request_limit", "模型调用达到两次上限"
+                code, message = "model_request_limit", "模型调用达到请求次数上限"
             elif isinstance(exc, UnexpectedModelBehavior):
                 last = self.last_outputs[-1] if self.last_outputs else None
                 code = ("invalid_output" if last and last["finish_reason"] in {"tool_call", "tool_calls"} else

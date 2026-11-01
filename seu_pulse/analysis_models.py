@@ -162,6 +162,7 @@ def supported_offsets(text):
         result.add("+08:00")
     if re.search(r"\bUTC\b(?!\s*[+-])|\bGMT\b(?!\s*[+-])", text):
         result.add("Z")
+        result.add("+00:00")
     return result
 
 

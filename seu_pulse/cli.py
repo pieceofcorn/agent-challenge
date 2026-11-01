@@ -13,6 +13,8 @@ from .models import iso_utc
 from .service import PulseService
 from .analysis import AnalysisService, load_preferences
 from .model_client import DeepSeekClient
+from .information_agent import InformationAgent
+from .agent_tools import AgentLimits
 
 
 def aware_datetime(value):
@@ -49,9 +51,23 @@ def main(argv=None) -> int:
     analyze.add_argument("--preferences", type=Path)
     analyze.add_argument("--env-file", type=Path, default=Path(".env"))
     analyze.add_argument("--as-of", type=aware_datetime)
+    agent = commands.add_parser("agent-analyze", help="单 Agent 按需调用只读工具；不保存分析结果")
+    agent.add_argument("id")
+    agent.add_argument("--preferences", type=Path)
+    agent.add_argument("--env-file", type=Path, default=Path(".env"))
+    agent.add_argument("--as-of", type=aware_datetime)
+    agent.add_argument("--initial-detail", action="store_true")
+    agent.add_argument("--initial-preferences", action="store_true")
+    agent.add_argument("--max-requests", type=int, default=6)
+    agent.add_argument("--max-tool-calls", type=int, default=4)
+    agent.add_argument("--request-timeout", type=float, default=60)
+    agent.add_argument("--tool-timeout", type=float, default=5)
+    agent.add_argument("--run-timeout", type=float, default=180)
     args = parser.parse_args(argv)
     try:
-        kwargs = {"read_only": True} if args.command == "analyze" else {}
+        limits = (AgentLimits(args.max_requests, args.max_tool_calls, args.request_timeout,
+                              args.tool_timeout, args.run_timeout) if args.command == "agent-analyze" else None)
+        kwargs = {"read_only": True} if args.command in {"analyze", "agent-analyze"} else {}
         with PulseService.from_config(args.config, **kwargs) as service:
             code = 0
             if args.command == "fetch":
@@ -67,9 +83,15 @@ def main(argv=None) -> int:
                 code = 3 if notice is None else 0
             elif args.command == "export":
                 output = service.export_notices(source_id=args.source_id, since=args.since)
-            elif args.command == "analyze":
-                output = AnalysisService(service, client=DeepSeekClient(env_file=args.env_file)).analyze_notice(
-                    args.id, preferences=load_preferences(args.preferences), as_of=args.as_of)
+            elif args.command in {"analyze", "agent-analyze"}:
+                client = DeepSeekClient(env_file=args.env_file)
+                if args.command == "analyze":
+                    output = AnalysisService(service, client=client).analyze_notice(
+                        args.id, preferences=load_preferences(args.preferences), as_of=args.as_of)
+                else:
+                    output = InformationAgent(service, client=client).analyze_notice(
+                        args.id, preferences_path=args.preferences, initial_detail=args.initial_detail,
+                        initial_preferences=args.initial_preferences, limits=limits, as_of=args.as_of)
                 code = (3 if output["error"] and output["error"]["code"] == "notice_not_found"
                         else 1 if output["status"] == "failed" else 4
                         if output["status"] == "insufficient_information" else 0)

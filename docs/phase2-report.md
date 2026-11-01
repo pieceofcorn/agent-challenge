@@ -189,3 +189,49 @@ analysis_models.py 以严格 Pydantic BaseModel 定义结构，配置 extra=forb
 用户随后补充失败中止要求，已更新仓库现有 AGENTS.md，并通过差异检查；不在数据契约或本报告重复维护执行规则。沙箱生效检查留待用户恢复后进行，没有继续重复受限环境中的失败探测。
 
 本轮规则提交 89651ea 与框架功能提交 6c67bcb 已普通推送，功能推送后 HEAD 与 origin/main 一致。提交前扫描全部 40 个版本文件，无真实密钥、Token 或私钥，.env/data 未跟踪；本轮开始前已有的 65 个数据文件哈希未变，Notice v1 契约块及第一阶段任务归档原文未变。新 wheel 的 12 个模块逐字节匹配当前源码。按用户流程，在推送成功后补记交付记录；未运行任务 2.2/2.3 或更改全局沙箱策略。
+
+## 19. 恢复会话后的默认沙箱验证（2026-11-01）
+
+用户要求先验证联网与 asyncio 线程唤醒，再实施 2.2。本轮在默认沙箱（无提权）执行最小 asyncio.wait_for(asyncio.to_thread(...), timeout=5) 探测，外层 timeout 10s，返回 ASYNCIO_THREAD_OK，退出码 0；urllib 请求 https://api.github.com（timeout=15）返回 HTTP 200，退出码 0。此前限制的历史诊断仍保留，本轮不再沿用“当前沙箱不可联网”的结论，也未修改全局配置。
+
+开工 main 与 origin/main 同步，HEAD be1db6f；Python 3.10.12、Pydantic AI 2.54.0，复用现有依赖。开发前对 data/ 的 99 个现有文件建立 SHA256 快照用于保全检查，不输出密钥。遵循执行规则，未进行无关修改或部署。
+
+## 20. 任务 2.2 最小设计与接口依据
+
+常规选择按用户既有自主授权实施：保留 analyze 入口，新增 agent-analyze；复用 AnalysisService、严格 Schema、证据校验和程序紧迫性，只扩展同一个 Pydantic AI Agent 的工具集合、可见上下文与执行记录。模型按需选择读取当前通知或调用者指定的显式偏好，不固定预取两个工具。具体参数、返回状态和预算统一维护于 agent.md，进度仅记 tasks.md。
+
+通过 read-docs 技能检索官方工具/usage 文档 https://pydantic.dev/docs/ai/llms-full.txt ，确认模型请求与成功工具调用是不同预算；同时实际检查已安装 2.54.0 的 Tool、RunContext、Agent、UsageLimits 签名。本项目另外在模型响应接收处限制业务工具请求（包含重复/非法请求），防止只统计成功执行而绕过预算。未依赖最新文档中可能较晚加入的能力。
+
+读取 SQLite 在独立线程的新只读连接中进行；模型不接触数据库连接、路径或凭据。读取超时忽略迟到结果，不声称强制杀死底层调用。证据只校验模型实际获得的上下文，运行记录只保留状态和哈希。保留任务 2.3 的分析持久化及 10～15 条评估边界；真实联网验证仅使用此前明确获准的三条通知。
+
+## 21. 任务 2.2 实现与验证记录
+
+新增 seu_pulse/information_agent.py 与 agent_tools.py，分别编排可见输入/结果封装和两个只读工具/预算/执行记录；复用 analysis.py 的输出校验与紧迫性，model_client.py 的同一 Agent 注册实际业务工具，cli.py 增加 agent-analyze。原 analyze 的两次请求限制、Notice v1、采集/查询接口与数据库结构保留。模型只获得当前通知 ID 和可用性提示，不能决定文件路径、数据库操作或联网目标。读取超时使用受控后台只读线程，忽略迟到结果；并不强制终止系统调用。调用标识在最终实现中同样只存哈希。
+
+新增 tests/test_information_agent.py 的 18 项测试，真实运行 Pydantic AI FunctionModel、HTTP MockTransport 序列化与临时 SQLite，未调用真实模型。覆盖初始充分而无工具、需要正文/显式偏好、已加载偏好直接输出、隐藏正文不能被引用、缺失/读取失败/消失/版本变化、非法工具名和参数、其他通知 ID、重复缓存、整批超预算拒绝、模型次数边界、业务工具与最终输出混合拒绝、工具与总运行超时、迟到结果不进入上下文、敏感调用 ID 哈希、只读兼容与 UTC 零偏移。
+
+开发首轮 17 项测试有两处夹具错误：恰好 24 小时应为 high（误写 medium），RSSHub 测试来源需要配置服务地址；修正后通过，日志 phase22-tool-tests-01/02-20261101.log 均保留。新增 UTC 回归时，夹具 JSON 默认 Unicode 转义导致中文替换未生效，03 日志保留该错误；修正为 ensure_ascii=False 后 04 日志 18 项通过（0.427 秒）。这些均为明确的测试夹具问题，没有把失败改写成通过。
+
+完整离线回归 `.venv/bin/python -m unittest discover -v`：79 项通过，2.622 秒，日志 data/phase22-final-tests-20261101.log。独立安装最终 wheel 后再运行 79 项通过，2.627 秒，日志 data/phase22-final-isolated-tests-20261101.log；导入并检查所有加载的 13 个 seu_pulse 模块确实来自 site-packages，排除测试误用工作树代码，干净环境 pip check 无缺失。环境 /tmp/seu-pulse-phase22-install.CqgyWR/venv；开发 .venv 原有系统依赖问题未擅改。CLI 主帮助和 agent-analyze 帮助通过。
+
+运行/构建/复验命令已写入 README。data/phase22-wheels/ 保留初版构建，最终代码的独立安装产物另存 data/phase22-final-wheels/，不覆盖第一阶段、任务 2.1 或本轮早期产物。源码、测试、契约与说明纳入版本管理，所有运行证据及原文仍在忽略目录。
+
+## 22. 任务 2.2 真实模型证据与边界
+
+全部 API 验证在默认沙箱内完成，无提权、无新依赖、无新增采集来源。合成输入为脚本手写通知；偏好模式为明确标识的科研讲座测试兴趣，不代表用户偏好。所有文件使用新名称保留，每份包含模型实际返回、请求数、工具状态、结果哈希及反馈序号。
+
+| 本地证据 | 实际输入与结果 | 模型请求 / 实际工具 |
+| --- | --- | --- |
+| data/phase22-synthetic-live-20261101-01.json | 合成通知，默认隐藏正文；完整条 success，空正文条 insufficient_information | 3/2 次；各调用一次 get_notice_detail，反馈均进入第 2 次请求 |
+| data/phase22-synthetic-preferences-live-20261101-01.json | 合成全文与可读测试偏好；首条 failed，次条信息不足；保留失败 | 2/2 次；首条未调用工具，次条调用正文与偏好并回传 |
+| data/phase22-synthetic-preferences-live-20261101-02.json | 修正后合成偏好复验；完整条 success，空正文条 insufficient_information | 2/2 次；完整条自主选择 get_user_preferences，状态 ok、反馈请求 2；空正文条选择正文工具 |
+| data/phase22-synthetic-initial-live-20261101-01.json | 初始已提供合成正文、无偏好；完整条成功，空正文条信息不足 | 1/1 次；均未调用业务工具，证明不固定预取 |
+| data/phase22-notices-live-20261101-01.json | 仅使用此前获准的三条真实通知；两条 success，一条 insufficient_information | 各 2 次；各实际调用 get_notice_detail，状态 ok/ok/missing_content，反馈均进入第 2 次请求 |
+
+首轮合成偏好失败定位为既有时间校验器只接受原文 UTC 对应的 Z，却拒绝等价 +00:00；模型一次修正仍保留 +00:00，程序如实失败，未降低未知时区约束。现增加对显式 UTC/GMT 的 +00:00 等价支持并加入回归，同时确认 +01:00 仍拒绝。工具提示另明确“偏好配置尚未读取”不同于“未配置”，未强制程序预取所有工具。第二轮通过，没有反复重试至超过三次规则。
+
+真实三条依次为：吴院二次选拔拟录取公示（145 字正文）、计算机拔尖班报名通知（1280 字正文）、因公出境管理通知（正文缺失）。原始 ID/来源链接与 content_hash 在上述本地 JSON；第一、二条正文工具返回原文，第三条明确 missing_content。数据库前后 SHA256 相同，未写原通知或分析表；没有外发其他通知或实际个人偏好。实际返回模型标识均为 deepseek-flash，具体版本未知仍为 null。
+
+数据保全检查：开发前 99 个 data/ 文件逐个 SHA256 对比无变化；第一阶段 tasks.md 归档与 HEAD 原文一致，phase1-report.md、Notice v1、采集/存储模块未改。候选版本文件共 44 个，检查实际 .env 密钥及凭据模式无命中；.env 权限仍 600，.env 和 data/ 未被跟踪。完整原文和未校验响应仅留本地，不能把 GitHub 备份误认为运行证据备份。
+
+本轮实测证明受限工具执行循环，不证明模型语义完全正确。用户相关性只在合成显式偏好与离线夹具验证，真实通知未配置偏好仍未知；时区/年份不明确仍保留 null。任务 2.3 的分析对象持久化、10～15 条人工参考及规则基线评估不在本轮范围。

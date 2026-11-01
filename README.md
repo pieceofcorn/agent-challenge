@@ -1,10 +1,10 @@
 # SEU-Pulse
 
-SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目。当前进入**第二阶段：单 Agent 信息理解与智能决策**，已新增任务 2.1 的通知理解组件；主动管理是项目定位，当前没有主动推送或完整个人事项管理功能。
+SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目。当前进入**第二阶段：单 Agent 信息理解与智能决策**，提供通知理解与按需只读工具循环；主动管理是项目定位，当前没有主动推送或完整个人事项管理功能。
 
 第一阶段已实现并验收 Python 采集、统一通知模型、SQLite 持久化、增量去重、服务层查询和 CLI。网页直接采集列表和正文为主，RSSHub 和静态列表适配器保留，可混合采集。默认来源为教务处国际交流和吴健雄学院通知公告；原始 HTML、正文及去重的历史验收证据见 [第一阶段报告](docs/phase1-report.md)，完整任务与网络诊断记录见 [tasks.md](tasks.md)。
 
-第二阶段已新增 DeepSeek 通知结构化理解、严格输出校验、程序紧迫性计算和只读 analyze 命令。真实模型接口以合成通知及获具体外发授权的三条真实通知验证；后者两条成功、一条缺正文而信息不足。按需工具执行循环、NoticeAnalysis 持久化及真实通知规则基线评估仍属后续任务，单次理解及输出修正不作为完整 Agent。
+第二阶段提供 DeepSeek 通知结构化理解、严格输出校验、程序紧迫性和只读 analyze；agent-analyze 由同一 Agent 按需调用正文与偏好工具并继续分析。真实模型接口以合成通知及获具体外发授权的三条真实通知验证；后者工具结果均回传，两条成功、一条缺正文而信息不足。NoticeAnalysis 持久化及真实通知规则基线评估属于后续任务。
 
 ## 文档导航
 
@@ -22,11 +22,11 @@ SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目
 
 整体数据流：校园信息采集 → SQLite 通知数据库 → Information Agent → 工具调用与信息补充 → 结构化分析结果 → 数据校验与持久化。
 
-| 任务 | 计划能力 | 实施状态 |
+| 任务 | 能力 | 使用入口与约定 |
 | --- | --- | --- |
-| 2.1 通知结构化理解 | 分类、重要性、用户相关性、行动需求、时间地点和理由；程序计算紧迫性 | 已实现；支持缺正文、缺偏好与失败状态 |
-| 2.2 最小 Tool Calling | get_notice_detail、get_user_preferences 与按需执行循环 | 尚未实施 |
-| 2.3 结果持久化与评估 | NoticeAnalysis、SQLite 持久化、10～15 条真实通知与规则基线比较 | 尚未实施 |
+| 2.1 通知结构化理解 | 分类、重要性、用户相关性、行动需求、时间地点和理由；程序计算紧迫性 | analyze；支持缺正文、缺偏好与失败状态 |
+| 2.2 最小 Tool Calling | get_notice_detail、get_user_preferences 与按需执行循环 | agent-analyze；可见上下文证据校验、权限与预算限制 |
+| 2.3 结果持久化与评估 | NoticeAnalysis、SQLite 持久化、10～15 条真实通知与规则基线比较 | 后续范围；进度见 tasks.md |
 
 任务 2.1 使用 Pydantic AI 2.54.0（兼容 Python 3.10 的固定版本）、严格 Pydantic 输出模型及官方 DeepSeek Flash。框架的 notice_analysis 输出工具只编码结构化返回，不是任务 2.2 的业务读取工具。Schema、原文证据与时间在本地校验，紧迫性仍由程序计算。具体约定见 [分析契约](agent.md#第二阶段扩展说明)，设计依据与实测/失败见第二阶段报告；进度只在 tasks.md 维护。
 
@@ -53,14 +53,14 @@ python3 -m venv /tmp/seu-pulse-review
 /tmp/seu-pulse-review/bin/seu-pulse --help
 ```
 
-data/wheels/ 保留第一阶段历史安装产物，data/phase2-wheels/ 保留引入框架前的任务 2.1 wheel。当前版本使用下列新目录保存项目与 Pydantic AI 依赖，避免覆盖历史产物：
+data/wheels/ 保留第一阶段历史产物，data/phase2-wheels/ 保留引入框架前的 2.1 wheel，data/pydantic-ai-wheels/ 保留框架接入产物。2.2 使用新目录保存项目与依赖，避免覆盖历史产物：
 
 ```bash
-.venv/bin/python -m pip wheel --no-build-isolation --wheel-dir data/pydantic-ai-wheels .
+.venv/bin/python -m pip wheel --no-build-isolation --wheel-dir data/phase22-final-wheels --find-links data/pydantic-ai-wheels .
 python3 -m venv /tmp/seu-pulse-phase2-review
-/tmp/seu-pulse-phase2-review/bin/python -m pip install --no-index --find-links data/pydantic-ai-wheels seu-pulse
+/tmp/seu-pulse-phase2-review/bin/python -m pip install --no-index --find-links data/phase22-final-wheels seu-pulse
 /tmp/seu-pulse-phase2-review/bin/python -m pip check
-/tmp/seu-pulse-phase2-review/bin/seu-pulse analyze --help
+/tmp/seu-pulse-phase2-review/bin/seu-pulse agent-analyze --help
 ```
 
 联网环境中的常规安装不需要这些临时 wheel。现有 .venv 继承系统包，本轮 pip check 报告与项目无依赖关系的 PyGObject 缺少 pycairo；未修改系统环境，项目依赖另在上述干净环境核验。
@@ -288,4 +288,32 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -v
 .venv/bin/python scripts/verify_analysis_live.py --notice-id NOTICE_ID --output data/model-live-new.json
 ```
 
-验证脚本保存结果、实际返回标识、原始未校验输出及失败状态到忽略目录，不覆盖已有证据。真实通知模式还核对数据库前后哈希。本轮真实接口证据和限制见第二阶段报告；任务 2.2 工具循环与任务 2.3 持久化/10～15 条真实通知评估尚未实现。
+验证脚本保存结果、实际返回标识、原始未校验输出及失败状态到忽略目录，不覆盖已有证据。真实通知模式还核对数据库前后哈希。本轮真实接口证据和限制见第二阶段报告。
+
+## 按需工具分析
+
+agent-analyze 默认给模型通知列表字段和资料可用性；模型自行决定是否读取正文、显式偏好，然后在同一 Agent 中根据工具返回继续分析。配置文件和密钥路径由程序掌握，模型不能指定路径或访问其他通知。命令只读，不触发采集，不写分析表：
+
+```bash
+.venv/bin/python -m seu_pulse agent-analyze NOTICE_ID --env-file .env
+.venv/bin/python -m seu_pulse agent-analyze NOTICE_ID --preferences preferences.local.json
+# 已有充分初始资料时允许模型直接输出，不必调用工具
+.venv/bin/python -m seu_pulse agent-analyze NOTICE_ID --initial-detail --initial-preferences --preferences preferences.local.json
+# 预算可按运行需要调整；最终输出也占模型请求，修正不额外扩大预算
+.venv/bin/python -m seu_pulse agent-analyze NOTICE_ID --max-requests 6 --max-tool-calls 4 --request-timeout 60 --tool-timeout 5 --run-timeout 180
+```
+
+沿用 analyze 的退出码；缺正文、未读正文或工具读取失败后仍有合法部分分析时退出 4。agent_trace 记录模型请求、实际读取/缓存、工具状态、结果哈希、后续请求的反馈序号及终止原因，不记录正文、偏好原文和凭据。工具缺失数据时返回未知；未知工具、非法参数、越界 ID 或超预算明确失败。读取超时忽略迟到结果，后台只读线程可能稍后结束；不声称强制中止底层系统调用。完整参数和返回状态见 [工具契约](agent.md#任务-22-工具循环契约)。
+
+真实 API 的合成测试与校园通知验证分开执行，证据文件须用新名称：
+
+```bash
+.venv/bin/python -m scripts.verify_information_agent_live --synthetic --output data/agent-synthetic-new.json
+.venv/bin/python -m scripts.verify_information_agent_live --synthetic --initial-detail --output data/agent-initial-new.json
+# 以下偏好仅为脚本手写测试资料，不代表用户背景
+.venv/bin/python -m scripts.verify_information_agent_live --synthetic --initial-detail --fixture-preferences --output data/agent-preferences-new.json
+# 仅在取得具体内容外发授权后运行；每次最多三条
+.venv/bin/python -m scripts.verify_information_agent_live --notice-id NOTICE_ID --output data/agent-live-new.json
+```
+
+普通使用会将模型选择读取的正文和显式偏好发送至官方 DeepSeek。任务 2.3 的持久化与 10～15 条人工参考/规则基线评估尚未实现；上述验证只证明受限工具协议与执行循环。
