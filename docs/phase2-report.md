@@ -266,4 +266,6 @@ analysis_models.py 以严格 Pydantic BaseModel 定义结构，配置 extra=forb
 
 截至本轮记录，新增 15 条外发授权提问仍无回复，不以等待时间当作同意。任务 2.3 持久化及比较程序可以审查、运行和提交，但真实逐条模型评估/人工参考/评分与第二阶段验收仍未完成；tasks.md 保持相应未勾选项。没有部署、删除历史、初始化仓库或新增通知源。
 
-提交前复核：51 个候选版本文件通过实际 .env 密钥、GitHub Token/私钥模式检查，无命中；.env 仍为 600 且未跟踪，data/ 未跟踪。开发开始前 99 个旧证据文件 SHA256 均未变，第一阶段归档、报告及 Notice/Storage/PulseService 模块未改。最终 wheel 的 16 个源码模块与工作树逐字一致，文档本地链接、差异和编译检查通过。实际 CLI analysis-list/get 读取回放库成功，输出保存在 data/phase23-cli-list/get-20261101.json（本地含原文，不上传）。本轮授权范围内实现可以提交，15 条外发及人工参考的未完成状态不改变。
+提交前复核：51 个候选版本文件通过实际 .env 密钥、GitHub Token/私钥模式检查，无命中；.env 仍为 600 且未跟踪，data/ 未跟踪。开发开始前 99 个旧证据文件 SHA256 均未变，第一阶段归档、报告及 Notice/Storage/PulseService 模块未改。最终 wheel 的 16 个源码模块与工作树逐字一致，文档本地链接、差异和编译检查通过。实际 CLI analysis-list/get 读取回放库成功，输出保存在 data/phase23-cli-list-20261101.json 和 data/phase23-cli-get-20261101.json（本地含原文，不上传）。本轮授权范围内实现可以提交，15 条外发及人工参考的未完成状态不改变。
+
+版本交付：d4c50e7（feat: persist analysis history and prepare reviewed evaluations）已普通推送至 origin/main，推送后 HEAD 与远端跟踪引用均为 d4c50e73a282b1f8b1f4a9d4772de6f719cd3748，工作区干净。随后仅追加交付记录；15 条外发问题仍待用户回复，未把部分交付标记成任务 2.3 或第二阶段全部验收。
