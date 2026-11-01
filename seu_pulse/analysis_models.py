@@ -49,8 +49,9 @@ MODEL_OUTPUT_SCHEMA = obj(
 )
 
 
-def fail(path):
-    raise AnalysisValidationError(f"不符合分析契约: {path}")
+def fail(path, hint=None):
+    suffix = f"；{hint}" if hint else ""
+    raise AnalysisValidationError(f"不符合分析契约: {path}{suffix}")
 
 
 def validate_shape(value, schema, path="$"):
@@ -59,7 +60,7 @@ def validate_shape(value, schema, path="$"):
                "boolean": type(value) is bool, "array": type(value) is list,
                "object": type(value) is dict}
     if not any(matches.get(k, False) for k in kinds):
-        fail(path)
+        fail(path, "要求类型 " + "/".join(kinds))
     if "enum" in schema and not any(type(value) is type(v) and value == v for v in schema["enum"]):
         fail(path)
     if value is None:
@@ -68,7 +69,7 @@ def validate_shape(value, schema, path="$"):
         fail(path)
     if type(value) is dict:
         if set(value) != set(schema["properties"]):
-            fail(path + ".fields")
+            fail(path + ".fields", "必需且仅允许字段 " + ",".join(schema["properties"]))
         for key, child in schema["properties"].items():
             validate_shape(value[key], child, path + "." + key)
     if type(value) is list:
@@ -162,13 +163,13 @@ def validate_point(point, raw, path):
                 fail(path + ".date")
             date.fromisoformat(point["date"])
             if point["date"] not in supported_dates(raw):
-                fail(path + ".date.evidence")
+                fail(path + ".date.evidence", "当前 raw_text 须有完整年月日，否则 date=null")
         if point["time"] is not None:
             if not re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", point["time"]):
                 fail(path + ".time")
             time.fromisoformat(point["time"])
             if point["time"] not in supported_times(raw):
-                fail(path + ".time.evidence")
+                fail(path + ".time.evidence", "当前 raw_text 须有数字 H:mm[:ss]，否则 time=null")
         offset = point["utc_offset"]
         if offset is not None:
             if offset != "Z" and not re.fullmatch(r"[+-]\d{2}:\d{2}", offset):
@@ -209,8 +210,8 @@ def validate_analysis(value, context):
         span = event["time"]
         if span is not None:
             text = evidence_text(span["evidence"], context, path + ".time")
-            if span["raw_text"] not in text:
-                fail(path + ".time.raw_text")
+            if not any(span["raw_text"] in e["quote"] for e in span["evidence"]):
+                fail(path + ".time.raw_text", "raw_text 须完整包含在本对象一条 evidence.quote 中")
             validate_point(span["start"], span["raw_text"], path + ".time.start")
             validate_point(span["end"], span["raw_text"], path + ".time.end")
             start, end = point_instant(span["start"]), point_instant(span["end"])
@@ -224,7 +225,7 @@ def validate_analysis(value, context):
     for index, deadline in enumerate(value["registration_deadlines"] or []):
         path = f"registration_deadlines[{index}]"
         text = evidence_text(deadline["evidence"], context, path)
-        if deadline["raw_text"] not in text:
-            fail(path + ".raw_text")
+        if not any(deadline["raw_text"] in e["quote"] for e in deadline["evidence"]):
+            fail(path + ".raw_text", "raw_text 须完整包含在本对象一条 evidence.quote 中")
         validate_point(deadline["at"], deadline["raw_text"], path + ".at")
     return value

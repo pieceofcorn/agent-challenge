@@ -191,6 +191,25 @@ class OutputTests(unittest.TestCase):
         result = analyzer(FakeClient([ModelError("model_blank", "blank"), payload()])).analyze_notice(NOTICE.id)
         self.assertEqual(result["status"], "success")
 
+    def test_nested_schema_repair_receives_prior_answer_and_required_fields(self):
+        bad = payload()
+        bad["events"][0]["time"] = {"raw_text": BODY, "start": None, "end": None}
+        client = FakeClient([bad, payload()])
+        result = analyzer(client).analyze_notice(NOTICE.id)
+        self.assertEqual(result["status"], "success")
+        repair_messages = client.calls[1]
+        self.assertEqual(repair_messages[-2]["role"], "assistant")
+        self.assertEqual(json.loads(repair_messages[-2]["content"]), bad)
+        self.assertIn("raw_text,start,end,evidence", repair_messages[-1]["content"])
+
+    def test_time_raw_text_cannot_be_assembled_from_separate_quotes(self):
+        value = payload()
+        value["events"][0]["time"] = {
+            "raw_text": "科研\n讲座", "start": None, "end": None,
+            "evidence": [evidence(quote="科研"), evidence(quote="讲座")]}
+        with self.assertRaises(AnalysisValidationError):
+            validate_analysis(value, CONTEXT)
+
     def test_missing_notice_storage_error_and_input_limit_skip_model(self):
         client = FakeClient([])
         result = analyzer(client, notice=None).analyze_notice("missing")

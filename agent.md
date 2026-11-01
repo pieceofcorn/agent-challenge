@@ -91,7 +91,7 @@ Deadline = {label:string, raw_text:string, at:TimePoint?, evidence:Evidence[]}
 
 other 表示内容明确但不属其他类别，null 表示不能判断，不能混用。Decision 即使未知也需非空理由。数组 null 表示未明确或不能判断；[] 用于明确不适用，需在 limitations 解释。未知时间、地点本身用 null；部分时间可保留对象与 raw_text，未知组成部分用 null。
 
-Evidence.field 只允许 notice.title/notice.summary/notice.content 和 preferences.interests/preferences.keywords/preferences.focus_areas；quote 必须是对应字符串或偏好数组某项的连续原文子串。已知判断需通知证据；已知相关性还需偏好证据；重要性、类别和行动判断不接受偏好证据替代内容。活动、时间和地点同样需要证据，非空地点 name 须能在引用中找到。校验检查引用存在性与时间归一化依据，不能证明判断语义完全正确，仍需人工评估。
+Evidence.field 只允许 notice.title/notice.summary/notice.content 和 preferences.interests/preferences.keywords/preferences.focus_areas；quote 必须是对应字符串或偏好数组某项的连续原文子串。时间 raw_text 须完整包含于本对象的一条 quote，不可拼接多个引用伪造连续原文。已知判断需通知证据；已知相关性还需偏好证据；重要性、类别和行动判断不接受偏好证据替代内容。活动、时间和地点同样需要证据，非空地点 name 须能在引用中找到。报名截止不包括公示、异议或申诉期限；活动数组不重复记录报名窗口。校验检查引用存在性与时间归一化依据，不能证明判断语义完全正确，仍需人工评估。
 
 ### 时间与紧迫性
 

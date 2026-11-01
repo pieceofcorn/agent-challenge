@@ -24,10 +24,17 @@ action_required 判断通知是否包含明确办理/报名/参与等行动，�
 evidence.field 只能使用 Schema 枚举，quote 必须是相应输入值的逐字连续子串。
 events 和 registration_deadlines 分开；多个不同活动/截止点均保留，不把发布时间当截止。
 events 与 registration_deadlines 必须是 JSON 数组或 null，单个条目也必须放在 [...] 中。
+events 记录讲座、宣讲、考试、面试等实际活动，不把报名窗口重复作为活动。
+registration_deadlines 只记录报名或申请参加项目的截止，不包含公示期、异议/申诉截止或考试时间；
+即使有明确异议提交行动，也不能填入 registration_deadlines。同一报名截止重复出现只保留一条。
 数组 null 表示不明确或未给出，[] 仅用于原文明确信息不适用，并在 limitations 解释。
 未知事实字段必须为 null，不得用空字符串。无正文应仅基于标题/摘要保守分析。
 时间 raw_text 逐字保留原文。只归一化原文完整明确的 YYYY年M月D日/年月日数字分隔形式、
 24小时制 H:mm[:ss]。不从标题、发布时间、采集时间补年份，不补 00:00 或 23:59。
+每个 TimeRange 必须有 raw_text、start、end、evidence 四个字段，不能省略或继承父级 evidence。
+raw_text 必须完整包含在本对象至少一条 evidence.quote 中，不能 raw_text 长而引用更短。
+归一化仅依据当前 raw_text，不从其他段落、标题或落款补其缺失年份。
+不支持的中文“某点/某时”时刻只保留原文，time=null，不自动变成 HH:00。
 无法可靠归一化的年份/日期/时刻保留 null；只保留 raw_text。日期按完整 YYYY-MM-DD。
 UTC/GMT、显式数字偏移或“北京时间/中国标准时间”可确定偏移；其他情况 utc_offset=null。
 禁止因东南大学、中国地点或程序所在时区推断时区。前后端点都只能使用原文明确支持的信息。
@@ -138,6 +145,7 @@ class AnalysisService:
                     {"role": "user", "content": user_content}]
         for attempt in range(2):
             result["model_requests"] += 1
+            completion = None
             try:
                 completion = self.client.complete(messages)
                 result["model_info"].update(returned_model=completion.model, request_id=completion.request_id)
@@ -155,10 +163,15 @@ class AnalysisService:
                     return self._failed(result, code, message)
             if attempt == 0:
                 result["warnings"].append("output_repair_attempted")
-                # Return only a safe validation path; never echo raw invalid output or source instructions.
+                # The previous answer is needed to correct a specific nested error rather than regenerate blindly.
+                # It remains untrusted data under SYSTEM_PROMPT; credentials are never included in model content.
+                if completion is not None and len(completion.content) <= 64_000:
+                    messages.append({"role": "assistant", "content": completion.content})
                 messages.append({"role": "user", "content":
-                                 "上次响应无效，请重新输出完整 JSON，严格遵守系统规则和原有输入。"
-                                 + message})
+                                 "上次响应无效，请保留有依据的字段，修正以下错误后重新输出完整 JSON。"
+                                 "不能为了通过校验而补出原文缺少的事实；不确定的组成部分用 null。"
+                                 "不得省略任何嵌套 evidence 字段，所有 raw_text 须完整位于本对象引用中。"
+                                 "只提取报名截止，不将公示/异议期限放入报名截止字段。错误：" + message})
         return self._failed(result, code, message)
 
     def _failed(self, result, code, message):
