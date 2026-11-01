@@ -6,6 +6,8 @@ SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目
 
 第二阶段提供 DeepSeek 通知结构化理解、严格输出校验、程序紧迫性和只读 analyze；agent-analyze 由同一 Agent 按需调用正文与偏好工具并继续分析。显式 --save 可追加保存输入快照、有效分析或失败尝试至独立分析库。模型调用、校验失败、规则比较与人工语义评分分开留证；实测与问题见第二阶段报告，进度只在 tasks.md 维护。
 
+2026-11-02产品语义修正：事项提取、应用内展示资格、个性化重要性、程序紧急程度和学生待办决定分层，详见 [需求](require.md#产品逻辑修正2026-11-02)。新的 [数据结构建议](docs/phase23-data-structure-proposal.md) 与 [15条事项草稿](docs/phase23-evaluation-review.md) 待确认；本轮未改运行代码。现有Analysis v1的action_required、内容重要性及旧24/72小时规则仅作历史实现说明，不用于新参考签审/最终评分，不把它们解释成学生必须行动或创建待办。
+
 ## 文档导航
 
 | 文件 | 职责 |
@@ -24,7 +26,7 @@ SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目
 
 | 任务 | 能力 | 使用入口与约定 |
 | --- | --- | --- |
-| 2.1 通知结构化理解 | 分类、重要性、用户相关性、行动需求、时间地点和理由；程序计算紧迫性 | analyze；支持缺正文、缺偏好与失败状态 |
+| 2.1 通知结构化理解 | 现有Analysis v1历史字段；新的事项与分层语义见待确认设计稿 | analyze；旧接口保留，不代表修正语义已实现 |
 | 2.2 最小 Tool Calling | get_notice_detail、get_user_preferences 与按需执行循环 | agent-analyze；可见上下文证据校验、权限与预算限制 |
 | 2.3 结果持久化与评估 | NoticeAnalysis、独立 SQLite、规则基线与逐条评分 | --save、analysis-list/get；真实评估与人工核对进度见 tasks.md |
 
@@ -334,6 +336,8 @@ agent-analyze 默认给模型通知列表字段和资料可用性；模型自行
 
 ## 真实通知评估与人工参考
 
+**当前暂停旧参考签审及action yes/no评分。** 以下命令是历史v1准备/回放接口说明，本轮不执行、不要把旧参考改成approved。新的事项提纲不是旧score脚本可用的冻结参考；用户确认前不运行最终评分，也不调用模型重新生成新Schema输出。完整事项及九个评估维度以 [修订审查稿](docs/phase23-evaluation-review.md) 为准；合成偏好测试独立设计，旧relevance合成验证不能当新个性化重要性验证。
+
 15 条候选清单见 [评估审查材料](docs/phase23-evaluation-review.md)。先只读准备材料，不调用 API；以下命令使用新的输出目录，保留已有失败和参考草稿：
 
 ```bash
@@ -344,9 +348,9 @@ agent-analyze 默认给模型通知列表字段和资料可用性；模型自行
 
 准备程序检查真实通知 ID 和内容版本，保存原链接、正文、固定 as_of（默认 2026-11-01T00:00:00Z）、规则预览和未签审表单。真实运行从只读 SQLite 固定本轮通知版本，模型初始不含正文，按需读取其内存快照；这些是实际采集内容，并非 fixture。每例保存实际输出、输入和工具记录及失败，规则基线只读取 Agent 最终获得的相同 input_snapshot，不调用 LLM、不额外预取资料。相同错误连续三例出现即停止，保留已完成材料与未完成数量。
 
-人工核对时复制 references.draft.json 为新文件（如 references.reviewed.json），逐条阅读 samples.json 的原文和来源链接，不能直接把规则预览当正确答案。填写 accepted_values 的四个判断值列表、must_be_unknown 的未知路径、evidence_notes 原文依据、allowed_tools/required_tools；已核对时间时新增 deadline_points（报名截止 at 数组或 null）、event_points（活动 start/end 对象数组或 null），不把公示期限当报名截止。可接受多个重要性等判断值，但理由需对应原文；无偏好相关性必须未知。
+历史v1参考采用accepted_values、must_be_unknown、evidence_notes与工具参考及时间点集合，保留供溯源；它把内容重要性/行动与少数时间数组合在一起，不符合当前产品语义。新参考按事项、主体、目的、各种时间和独立判断维度组织，不把学院审核/公示/异议/历史事项排除，也不把所有事项当学生报名或个人待办。
 
-仅真实核对后填写 reviewer，并将对应条目的 review_status 改为 approved；草稿不会被程序当作人工参考。评分不调用模型，不修改原始输出：
+旧版评分回放命令如下，仅作接口存档；本轮暂停执行，不填写新approved参考：
 
 ```bash
 .venv/bin/python -m scripts.evaluate_notices score --run-dir data/evaluation-run-new --references data/references.reviewed.json --output data/evaluation-scores-new.json
