@@ -269,3 +269,33 @@ analysis_models.py 以严格 Pydantic BaseModel 定义结构，配置 extra=forb
 提交前复核：51 个候选版本文件通过实际 .env 密钥、GitHub Token/私钥模式检查，无命中；.env 仍为 600 且未跟踪，data/ 未跟踪。开发开始前 99 个旧证据文件 SHA256 均未变，第一阶段归档、报告及 Notice/Storage/PulseService 模块未改。最终 wheel 的 16 个源码模块与工作树逐字一致，文档本地链接、差异和编译检查通过。实际 CLI analysis-list/get 读取回放库成功，输出保存在 data/phase23-cli-list-20261101.json 和 data/phase23-cli-get-20261101.json（本地含原文，不上传）。本轮授权范围内实现可以提交，15 条外发及人工参考的未完成状态不改变。
 
 版本交付：d4c50e7（feat: persist analysis history and prepare reviewed evaluations）已普通推送至 origin/main，推送后 HEAD 与远端跟踪引用均为 d4c50e73a282b1f8b1f4a9d4772de6f719cd3748，工作区干净。随后仅追加交付记录；15 条外发问题仍待用户回复，未把部分交付标记成任务 2.3 或第二阶段全部验收。
+
+## 26. 十五条真实通知评估外发获准
+
+用户对“是否允许将候选的 15 条通知发送至官方 DeepSeek 评估，可能含公开联系人、不发送真实个人偏好”的问题明确回复“可以”。本轮授权覆盖已列出的这 15 条标题/摘要/可用正文；不扩大为其他通知、其他来源或个人偏好。使用 data/phase23-evaluation-preparation-20261101-02/samples.json，固定 as_of=2026-11-01T00:00:00Z、preferences=null，在默认沙箱内运行现有评估程序。原数据与历史失败保留，新输出使用独立目录；人工参考仍待核对，不以模型输出或规则预览冒充人工正确率。
+
+## 27. 十五条首轮实测、规则对比与来源核对
+
+实际命令：`.venv/bin/python -m scripts.evaluate_notices run --bundle data/phase23-evaluation-preparation-20261101-02/samples.json --output data/phase23-evaluation-live-20261101-01`。程序退出码1，15/15均执行完毕，未触发三次相同错误中止：10条success、3条insufficient_information、2条failed（invalid_output），共38次框架模型请求，未把技术通过计为正确率。两条失败分别为爱丁堡线上说明会和UT Austin课程项目，首轮原始响应及修正均完整保留，未重跑覆盖。
+
+正文工具15次均实际执行并反馈到同一Agent第2次请求，12次ok、3次missing_content；没有偏好工具调用，所有可用分析相关性均为null，未声称真实个人偏好遵守已充分评估。实际返回模型标识为deepseek-flash，具体版本均未知为null；所有紧迫性条目的level均为null（原文没有可靠完整偏移），不从校园地点或英国时间推断时区。
+
+分析库 data/phase23-evaluation-live-20261101-01/analyses.db 实际保存15条尝试，其中13条有效/明确部分结果和2条失败尝试，逐条读取与case JSON封装、输入快照完全一致；两条失败analysis_id=null。原通知库前后SHA256均为589cb43563b57f5143095165d4def50a3bf7b67e41582a956eecf18ddc553ec9。每例基线输入哈希等于实际input_snapshot哈希，重新运行确定性基线也与保存值完全一致，未让基线看到Agent未取得的数据。
+
+两条输出失败的真实原因：第10条首次缺events[0].evidence，修正后在raw只含点分时刻时输出冒号时间，违反现有H:mm契约；第12条首次地点名称缺乏连续原文依据，修正后补入原文未完整给出的区间结束年份。程序正确拒绝而非当有效分析保存。没有通过放宽模型输出校验使评估“全过”。
+
+逐样本对比和可审查参考在 docs/phase23-evaluation-review.md。来源核对发现第11/14条把学院行政审核列为学生报名截止；第11条也将公示/录取结果作为活动，并将不同的奖学金申请与网申目标合并。第13条确已在limitations说明原文校内4月21日/4月14日不一致，但仍保留前者为确定日期，是否应改为未知需人工确认，不能说其完全漏报。第13/15条都有原文明示的项目开始日期，却因误认为区间端点需成对完整而漏提开始日期；现有Schema允许端点独立未知，不要求两端同时归一化。规则基线则易受背景中的竞赛/奖学金/讲座关键词影响，并把历史报名描述当当前行动。这些是来源核对观察，尚非人工正确率结论。
+
+参考草稿 data/phase23-reference-codex-draft-20261101-01/02.json 保留两个版本；02版给出15条类别/重要性/行动候选、完整时间判断建议、工具口径及28段经过连续子串核对的原文依据。全部review_status=draft、reviewer=null，具体参考后于模型输出形成，明确标为探索性、非预先冻结盲测。复试分段、说明会去重及缴费/奖学金目标等口径已提出具体建议供人工确认。用户的“可以”只落实已提问的外发授权，尚无人工参考签审；已另按require.md的“人工参考判断和评分口径应先明确”请求核对，未自动改成approved。
+
+草稿文档生成曾在写出02版参考后因局部变量run未定义停止，诊断保留于data/phase23-review-generation-01.log；修正生成器后复用逐字相同的已有草稿，不覆盖原文件。15条draft均被评分入口拒绝，真实CLI评分尝试返回2且没有产生scores文件；不能以自动草稿对Agent/基线算正式正确率。独立竞赛/科研/奖学金类别覆盖仍不足，真实偏好亦未提供，保留这些验收边界。
+
+## 28. 本轮评分兼容改动与回归
+
+只扩展evaluation.py的人工参考表达：可显式列出accepted_deadline_points/accepted_event_points的多个方案，用于人工认可的活动分段或未知表示；不得与单值参考同时使用，不默认混同null/空数组，不改变模型运行Schema、提示、输出校验或本轮38次请求的数据。新增回归检验没有显式认可时不把null当[]、未知点不能冒充空列表、未签审拒绝、失败预测计失败及非法/矛盾参考拒绝。未用参考选项掩盖本轮语义缺陷。
+
+开发环境100项测试通过（3.501秒），日志data/phase23-after-live-tests-20261101.log；独立wheel环境 /tmp/seu-pulse-phase23-review.KJpdXY/venv 的100项通过（2.928秒），data/phase23-review-isolated-tests-20261101.log，全部15个加载项目模块确来自site-packages，pip check通过。compileall通过。新wheel位于data/phase23-review-wheels/，SHA256=822b668bc2b0f098f3f165cea459e8be262b73bccedfeee54f0b0399dfb6fbd2，保留之前所有构建。运行/审查指引已同步README与agent.md。
+
+本轮真实调用、持久化和来源核对已留证；正式参考、评分及第二阶段人工验收仍待回复，tasks.md保留相关未完成项。本轮不再外发通知或对失败样本自动重试，也未部署或修改通知库。
+
+提交前核对：本轮开始前224个data/既有文件SHA256均未变；第一阶段归档、报告、Notice/Storage/PulseService保持原文。新wheel16个源码模块与工作树一致；51个版本文件通过实际密钥与凭据模式检查，无命中，未跟踪.env/data/。本地文档链接及git diff --check通过。原始首轮模型文件、参考01/02草稿和局部文档生成失败均保留，仅推送源码、测试和不含原文联系人信息的审查摘要。

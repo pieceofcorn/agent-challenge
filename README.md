@@ -4,7 +4,7 @@ SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目
 
 第一阶段已实现并验收 Python 采集、统一通知模型、SQLite 持久化、增量去重、服务层查询和 CLI。网页直接采集列表和正文为主，RSSHub 和静态列表适配器保留，可混合采集。默认来源为教务处国际交流和吴健雄学院通知公告；原始 HTML、正文及去重的历史验收证据见 [第一阶段报告](docs/phase1-report.md)，完整任务与网络诊断记录见 [tasks.md](tasks.md)。
 
-第二阶段提供 DeepSeek 通知结构化理解、严格输出校验、程序紧迫性和只读 analyze；agent-analyze 由同一 Agent 按需调用正文与偏好工具并继续分析。显式 --save 可追加保存输入快照、有效分析或失败尝试至独立分析库。真实模型以合成通知及获授权的三条真实通知验证；15 条评估候选与规则基线已准备，扩大模型外发及人工参考核对尚待完成。
+第二阶段提供 DeepSeek 通知结构化理解、严格输出校验、程序紧迫性和只读 analyze；agent-analyze 由同一 Agent 按需调用正文与偏好工具并继续分析。显式 --save 可追加保存输入快照、有效分析或失败尝试至独立分析库。模型调用、校验失败、规则比较与人工语义评分分开留证；实测与问题见第二阶段报告，进度只在 tasks.md 维护。
 
 ## 文档导航
 
@@ -316,7 +316,7 @@ agent-analyze 默认给模型通知列表字段和资料可用性；模型自行
 .venv/bin/python -m scripts.verify_information_agent_live --notice-id NOTICE_ID --output data/agent-live-new.json
 ```
 
-普通使用会将模型选择读取的正文和显式偏好发送至官方 DeepSeek。上述验证只证明受限工具协议与执行循环；15 条真实通知的人工参考/规则基线评估还需独立完成。
+普通使用会将模型选择读取的正文和显式偏好发送至官方 DeepSeek。上述验证只证明受限工具协议与执行循环；真实通知的参考与规则基线比较单独保存在评估材料中，人工签审前不生成正式正确率。
 
 ## 保存与追溯分析
 
@@ -352,4 +352,6 @@ agent-analyze 默认给模型通知列表字段和资料可用性；模型自行
 .venv/bin/python -m scripts.evaluate_notices score --run-dir data/evaluation-run-new --references data/references.reviewed.json --output data/evaluation-scores-new.json
 ```
 
-汇总按实际签审字段统计，不为未标注维度编造正确率；执行失败按已标注字段计失败。时间点比较忽略条目顺序并认可 Z/+00:00 等价，保留未知组成部分；工具必要性与实际执行/回传分别评价。原文证据校验通过不等同于语义正确，仍需人工检查分类、时间、未知编造、重要性和偏好遵守。现有来源的独立竞赛、科研和奖学金样本不足，不能据本组材料推广结论。
+汇总按实际签审字段统计，不为未标注维度编造正确率；执行失败按已标注字段计失败。时间点比较忽略条目顺序并认可 Z/+00:00 等价，保留未知组成部分；工具必要性与实际执行/回传分别评价。人工认可多个时间集合时，可用 accepted_deadline_points/accepted_event_points 显式列出各方案，不能与单值字段并存；不会自动把 null、空数组和全空时间点混同。原文证据校验通过不等同于语义正确，仍需人工检查标签、时间、未知编造、重要性和偏好遵守。现有来源的独立竞赛、科研和奖学金样本不足，不能据本组材料推广结论。
+
+本轮本地证据为 data/phase23-evaluation-live-20261101-01/，来源核对草稿为 data/phase23-reference-codex-draft-20261101-02.json；可读审查表在 docs/phase23-evaluation-review.md。首轮失败保留，success 只表示程序校验通过。具体参考在模型输出后形成，属于探索性核对，人工签审后仍不能当成预先冻结的盲测基准。

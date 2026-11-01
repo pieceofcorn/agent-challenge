@@ -143,3 +143,5 @@ model_info={provider, requested_model, returned_model, model_version, request_id
 `AnalysisStore(path, read_only=False)` 提供 `save(result, *, input_snapshot, source_snapshot)`、`get(attempt_id)`、`list_records(notice_id=None, include_failed=False, limit=50)`；有效保存返回 NoticeAnalysis，失败返回独立 AnalysisAttempt（attempt_id、analysis_id=null、相同版本/快照/result）。`analysis-list`/`analysis-get` 只读分析库，不打开通知库，不调用模型；默认列表只含有效结果，可显式包含失败。保存命令的 JSON 添加存储回执（ID、状态），不默认回显输入快照；仅查询记录时返回本地快照。
 
 评估使用固定 UTC as_of、选定真实通知与明确标识的偏好条件。规则基线不请求模型，必须在 Agent 实际获得的同一 input_snapshot 上运行，不能预读 Agent 尚未获得的资料。参考草稿、用户核对状态、样本覆盖缺口及逐字段评分分别记录；未签审的自动草稿不能称为人工参考已验收。具体外发范围须遵循已有用户授权，不自动扩展三条通知的旧授权。持久化、规则测试、真实模型调用和人工评分分别留证，不混为通过结论。
+
+时间参考用 deadline_points/event_points 指定一个可接受集合，或用 accepted_deadline_points/accepted_event_points 明列多个可接受集合，两种形式不能并存；多个方案只在人工确认其语义均合理时使用，不全局把 null 与空数组混为一谈。时间点比较不证明活动标签、报名主体或原文冲突处理正确，仍需逐样本语义核对。后于模型运行形成的参考须标明探索性、非盲测，不能声称预先冻结的独立基准。

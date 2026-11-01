@@ -112,8 +112,15 @@ def score_analysis(analysis, reference):
             raise ValueError("未知字段参考路径无效")
         scores["unknown:" + path] = analysis is not None and path_value(analysis, path) is None
     for label, field in (("deadline_points", "registration_deadlines"), ("event_points", "events")):
-        if label not in reference:
+        alternatives = "accepted_" + label
+        if label in reference and alternatives in reference:
+            raise ValueError("时间参考不能同时给出单值与可接受方案")
+        if label not in reference and alternatives not in reference:
             continue
+        expected = reference[alternatives] if alternatives in reference else [reference[label]]
+        if (not isinstance(expected, list) or not expected
+                or any(v is not None and not isinstance(v, list) for v in expected)):
+            raise ValueError("时间参考须为非空方案列表，每个方案为数组或 null")
         values = analysis[field] if analysis else None
         actual = (None if values is None else [v["at"] for v in values] if label == "deadline_points"
                   else [None if v["time"] is None else {k: v["time"][k] for k in ("start", "end")} for v in values])
@@ -125,7 +132,7 @@ def score_analysis(analysis, reference):
             return value
 
         canonical = lambda value: sorted(json.dumps(normalize(v), sort_keys=True) for v in value) if isinstance(value, list) else value
-        scores[label] = analysis is not None and canonical(actual) == canonical(reference[label])
+        scores[label] = analysis is not None and any(canonical(actual) == canonical(v) for v in expected)
     return {"available": analysis is not None, "fields": scores}
 
 

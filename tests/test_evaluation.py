@@ -92,6 +92,30 @@ class EvaluationTests(unittest.TestCase):
         call["feedback_request"] = None
         self.assertFalse(score_tools({"tool_calls": [call]}, reference)["observed_execution_and_feedback"])
 
+    def test_time_alternatives_require_explicit_review_and_keep_unknown_semantics(self):
+        reference = self.reference()
+        reference["deadline_points"] = []
+        output = deepcopy(OUTPUT_EXAMPLE)  # null is not silently changed into an empty array.
+        self.assertFalse(score_analysis(output, reference)["fields"]["deadline_points"])
+        del reference["deadline_points"]
+        reference["accepted_deadline_points"] = [None, []]
+        self.assertTrue(score_analysis(output, reference)["fields"]["deadline_points"])
+        output["registration_deadlines"] = [{"at": {"date": None, "time": None, "utc_offset": None}}]
+        self.assertFalse(score_analysis(output, reference)["fields"]["deadline_points"])
+        self.assertFalse(score_analysis(None, reference)["fields"]["deadline_points"])
+        reference["review_status"] = "draft"
+        with self.assertRaises(ValueError):
+            score_analysis(output, reference)
+        reference["review_status"] = "approved"
+        for bad in ([], None, "invalid", [42]):
+            reference["accepted_deadline_points"] = bad
+            with self.assertRaises(ValueError):
+                score_analysis(output, reference)
+        reference["accepted_deadline_points"] = [None]
+        reference["deadline_points"] = None
+        with self.assertRaises(ValueError):
+            score_analysis(output, reference)
+
     def test_complete_offline_evaluation_and_scoring_use_equal_snapshots(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
