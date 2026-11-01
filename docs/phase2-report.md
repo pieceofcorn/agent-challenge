@@ -241,3 +241,29 @@ analysis_models.py 以严格 Pydantic BaseModel 定义结构，配置 extra=forb
 功能提交 ec6f2bb（feat: add bounded read-only information agent tools）已普通推送至 origin/main，继承 be1db6f，未强制推送或覆盖远端历史。最终 wheel SHA256 为 a44f570ad8c1d5491f4ebe077746bfedd3c3e548180669849f589217d5f6afed，14 个包内源码模块与工作树一致；compileall、差异空白、文档本地链接、44 个候选文件的实际密钥/凭据模式检查及 99 个旧证据文件保全检查通过。交付文档另澄清 agent.md 引言和 2.1 入口范围，避免把 2.1 不注册工具的说明误读为 2.2 尚未实现。
 
 用户随后要求阅读相关文档与接口、了解进度后继续。已再次核对 require.md 的任务 2.3、agent.md 的现有分析/工具契约与 Storage 接口；后续按 tasks.md 推进持久化设计和评估准备，不将既有三条外发授权自动扩大为其他真实通知。
+
+## 24. 任务 2.3 设计自审与评估准备
+
+在任务 2.2 交付后按用户“阅读相关文档与接口，了解开发进度后继续”及既有常规自主决策授权推进。复读 require.md 任务 2.3/阶段验收、agent.md、Storage/AnalysisService/InformationAgent/CLI 接口。选择独立分析 SQLite，避免改写已有采集数据库及其历史验收哈希；程序显式 --save 才写，模型继续只有两个只读工具。每次 UUID 追加，保留实际可见输入与原内容最小快照，用于区别版本和公平规则比较；失败尝试单独标记，不能变成有效分析。具体结构、事务与接口只维护在 agent.md。
+
+从现有 28 条中选择 15 条候选：所有 12 条有正文通知，加上因公出境管理、纪念馆志愿讲解员、五校书院交流三条无正文通知。来源为既有两个官方栏目，无新增采集；清单在 docs/phase23-evaluation-review.md，本地 ID/内容指纹/正文情况在 data/phase23-evaluation-manifest-20261101.json。候选覆盖交流项目、选拔、公示、说明会、招募和缺正文，但独立竞赛/科研/奖学金类别不足，不以合成通知填充真实样本。尚无人工签审参考。
+
+旧授权只覆盖三条，已向用户提出其余候选向官方 DeepSeek 外发的具体范围，说明可能含公开联系人、无真实个人偏好、原始材料仅本地保存。待明确回复前不外发新增通知；持久化、离线回归和本地参考草稿可独立继续。
+
+## 25. 任务 2.3 本轮实现、离线验证及未完成项
+
+新增 analysis_store.py：NoticeAnalysis/AnalysisAttempt 和独立 AnalysisStore，analysis_attempts 保存所有合法执行封装，notice_analyses 仅关联有效/明确部分结果。每次 UUID 追加，事务中写入，外键/状态约束阻止失败成为有效分析；保存时重算源内容、可见输入/偏好哈希、严格 Schema/原文证据与程序紧迫性，读取时也验证 JSON 与关系索引一致。source_snapshot 排除非必要 metadata/采集时间；analysis.py 暴露防外部修改的输入/原内容快照。CLI 增加显式 --save/--analysis-db、analysis-list/get；原 analyze/agent-analyze 默认不保存，原通知库始终只读，拒绝向已有非分析库建表。
+
+新增 evaluation.py、prepare_evaluation.py 与 evaluate_notices.py：规则基线不调用模型，关键词只作比较，不替代 Agent 判断；缺年份/时区/时刻不补造。准备程序仅本地读取，真实运行固定 SQLite 的本轮原内容版本，模型按需读取真实记录的内存快照，基线使用模型最终可见的同一 input_snapshot。逐例原始输出/结果/输入/哈希/失败单独保存，三例连续相同错误停止；固定 UTC as_of。评分必须有逐条 approved 和非空人工 reviewer，未签审草稿拒绝评分；只统计明确标注字段，执行失败按已标注字段失败计分，不隐去失败。分类/重要性/偏好/行动、报名和活动时间点、未知路径、工具必要性与实际执行/回传分别计分，不把机械证据校验通过称为语义正确。
+
+12 项新存储测试首轮通过，日志 data/phase23-store-tests-01-20261101.log：追加历史、内容变化、缺通知、部分输出、失败分类、模型版本未知、无效 Schema/哈希/证据/紧迫性/UTC 拒绝、事务回滚、只读/无创建、原数据库拒绝、存储损坏检出和 CLI。8 项评估测试首轮有一处夹具共享可变时间点造成预期一起被修改，已保留 01 日志；深复制预期后 02 日志通过。后续补充 Z/+00:00 等价、未知路径拼写检查及实际三次失败中止，完整测试已覆盖。
+
+最终 `.venv/bin/python -m unittest discover -v`：99 项，3.852 秒，通过，data/phase23-final-tests-20261101.log。独立 wheel 环境 /tmp/seu-pulse-phase23-install.S4qT8h/venv：99 项，4.020 秒，通过，data/phase23-isolated-tests-20261101.log；全部加载的 15 个项目模块确来自 site-packages，pip check 无缺失。compileall 通过。wheel 保存在 data/phase23-wheels/，SHA256 cc712e4f7478a9935454b323a49525b49568a8ccd36ba59ec6be6886f98f91de，未覆盖早期构建；具体命令已更新 README。
+
+真实结果持久化证据为 data/phase23-replayed-live-analysis-20261101.db/json：读取此前 data/phase22-notices-live-20261101-01.json 的三条获准结果，逐条重建同一输入/原内容快照，保存后读回封装完全相等，状态 success/success/insufficient_information，原通知数据库哈希未变。本次是历史真实结果的保存回放，新增 API 请求为 0，不宣称已重新调用模型或完成 15 条评估。
+
+本地真实准备材料有两份，均保留：data/phase23-evaluation-preparation-20261101-01/ 和 02/。最终 02 版为 15 条原文/链接/版本和规则预览、四项判断空参考列表、未知路径、待核对时间与工具必要性表单；所有 reviewer=null、review_status=draft，无虚构的人工签审。15 条的正文 12/缺正文 3 来自现有数据库，本轮未重新请求原网站，也未向模型外发新增通知；来源时效与类别覆盖不能超出第一阶段既有实采证据。
+
+截至本轮记录，新增 15 条外发授权提问仍无回复，不以等待时间当作同意。任务 2.3 持久化及比较程序可以审查、运行和提交，但真实逐条模型评估/人工参考/评分与第二阶段验收仍未完成；tasks.md 保持相应未勾选项。没有部署、删除历史、初始化仓库或新增通知源。
+
+提交前复核：51 个候选版本文件通过实际 .env 密钥、GitHub Token/私钥模式检查，无命中；.env 仍为 600 且未跟踪，data/ 未跟踪。开发开始前 99 个旧证据文件 SHA256 均未变，第一阶段归档、报告及 Notice/Storage/PulseService 模块未改。最终 wheel 的 16 个源码模块与工作树逐字一致，文档本地链接、差异和编译检查通过。实际 CLI analysis-list/get 读取回放库成功，输出保存在 data/phase23-cli-list/get-20261101.json（本地含原文，不上传）。本轮授权范围内实现可以提交，15 条外发及人工参考的未完成状态不改变。

@@ -15,6 +15,7 @@ from .analysis import AnalysisService, load_preferences
 from .model_client import DeepSeekClient
 from .information_agent import InformationAgent
 from .agent_tools import AgentLimits
+from .analysis_store import AnalysisStore
 
 
 def aware_datetime(value):
@@ -46,12 +47,14 @@ def main(argv=None) -> int:
     export.add_argument("--output", type=Path)
     runs = commands.add_parser("runs", help="最近逐源运行记录")
     runs.add_argument("--limit", type=int, default=50)
-    analyze = commands.add_parser("analyze", help="只读分析已有通知；调用 DeepSeek，不保存分析结果")
+    analyze = commands.add_parser("analyze", help="只读分析已有通知；调用 DeepSeek，默认不保存结果")
     analyze.add_argument("id")
     analyze.add_argument("--preferences", type=Path)
     analyze.add_argument("--env-file", type=Path, default=Path(".env"))
     analyze.add_argument("--as-of", type=aware_datetime)
-    agent = commands.add_parser("agent-analyze", help="单 Agent 按需调用只读工具；不保存分析结果")
+    analyze.add_argument("--save", action="store_true")
+    analyze.add_argument("--analysis-db", type=Path, default=Path("data/notice-analyses.db"))
+    agent = commands.add_parser("agent-analyze", help="单 Agent 按需调用只读工具；默认不保存结果")
     agent.add_argument("id")
     agent.add_argument("--preferences", type=Path)
     agent.add_argument("--env-file", type=Path, default=Path(".env"))
@@ -63,12 +66,35 @@ def main(argv=None) -> int:
     agent.add_argument("--request-timeout", type=float, default=60)
     agent.add_argument("--tool-timeout", type=float, default=5)
     agent.add_argument("--run-timeout", type=float, default=180)
+    agent.add_argument("--save", action="store_true")
+    agent.add_argument("--analysis-db", type=Path, default=Path("data/notice-analyses.db"))
+    analyses = commands.add_parser("analysis-list", help="只读查询分析记录，默认排除失败尝试")
+    analyses.add_argument("--analysis-db", type=Path, default=Path("data/notice-analyses.db"))
+    analyses.add_argument("--notice-id")
+    analyses.add_argument("--include-failed", action="store_true")
+    analyses.add_argument("--limit", type=int, default=50)
+    analysis_get = commands.add_parser("analysis-get", help="只读查看一次分析或失败尝试及输入快照")
+    analysis_get.add_argument("id")
+    analysis_get.add_argument("--analysis-db", type=Path, default=Path("data/notice-analyses.db"))
     args = parser.parse_args(argv)
     try:
+        if args.command in {"analysis-list", "analysis-get"}:
+            with AnalysisStore(args.analysis_db, read_only=True) as store:
+                if args.command == "analysis-list":
+                    output = [record.to_dict() for record in store.list_records(
+                        notice_id=args.notice_id, include_failed=args.include_failed, limit=args.limit)]
+                else:
+                    record = store.get(args.id)
+                    output = record.to_dict() if record else None
+            print(json.dumps(output, ensure_ascii=False, indent=2, allow_nan=False))
+            return 3 if output is None else 0
         limits = (AgentLimits(args.max_requests, args.max_tool_calls, args.request_timeout,
                               args.tool_timeout, args.run_timeout) if args.command == "agent-analyze" else None)
         kwargs = {"read_only": True} if args.command in {"analyze", "agent-analyze"} else {}
         with PulseService.from_config(args.config, **kwargs) as service:
+            if args.command in {"analyze", "agent-analyze"} and args.save:
+                if args.analysis_db.resolve() == service.config.database.resolve():
+                    raise ValueError("分析库不能指向原通知数据库")
             code = 0
             if args.command == "fetch":
                 result = service.fetch_notices(source_ids=args.source_ids)
@@ -86,12 +112,20 @@ def main(argv=None) -> int:
             elif args.command in {"analyze", "agent-analyze"}:
                 client = DeepSeekClient(env_file=args.env_file)
                 if args.command == "analyze":
-                    output = AnalysisService(service, client=client).analyze_notice(
+                    analyzer = AnalysisService(service, client=client)
+                    output = analyzer.analyze_notice(
                         args.id, preferences=load_preferences(args.preferences), as_of=args.as_of)
                 else:
-                    output = InformationAgent(service, client=client).analyze_notice(
+                    analyzer = InformationAgent(service, client=client)
+                    output = analyzer.analyze_notice(
                         args.id, preferences_path=args.preferences, initial_detail=args.initial_detail,
                         initial_preferences=args.initial_preferences, limits=limits, as_of=args.as_of)
+                if args.save:
+                    with AnalysisStore(args.analysis_db) as store:
+                        record = store.save(output, input_snapshot=analyzer.input_snapshot,
+                                            source_snapshot=analyzer.source_snapshot)
+                    output["storage"] = {"attempt_id": record.attempt_id, "analysis_id": record.analysis_id,
+                                         "status": record.result["status"]}
                 code = (3 if output["error"] and output["error"]["code"] == "notice_not_found"
                         else 1 if output["status"] == "failed" else 4
                         if output["status"] == "insufficient_information" else 0)

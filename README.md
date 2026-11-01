@@ -4,7 +4,7 @@ SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目
 
 第一阶段已实现并验收 Python 采集、统一通知模型、SQLite 持久化、增量去重、服务层查询和 CLI。网页直接采集列表和正文为主，RSSHub 和静态列表适配器保留，可混合采集。默认来源为教务处国际交流和吴健雄学院通知公告；原始 HTML、正文及去重的历史验收证据见 [第一阶段报告](docs/phase1-report.md)，完整任务与网络诊断记录见 [tasks.md](tasks.md)。
 
-第二阶段提供 DeepSeek 通知结构化理解、严格输出校验、程序紧迫性和只读 analyze；agent-analyze 由同一 Agent 按需调用正文与偏好工具并继续分析。真实模型接口以合成通知及获具体外发授权的三条真实通知验证；后者工具结果均回传，两条成功、一条缺正文而信息不足。NoticeAnalysis 持久化及真实通知规则基线评估属于后续任务。
+第二阶段提供 DeepSeek 通知结构化理解、严格输出校验、程序紧迫性和只读 analyze；agent-analyze 由同一 Agent 按需调用正文与偏好工具并继续分析。显式 --save 可追加保存输入快照、有效分析或失败尝试至独立分析库。真实模型以合成通知及获授权的三条真实通知验证；15 条评估候选与规则基线已准备，扩大模型外发及人工参考核对尚待完成。
 
 ## 文档导航
 
@@ -26,7 +26,7 @@ SEU-Pulse 是面向东南大学校园信息的主动式信息管理 Agent 项目
 | --- | --- | --- |
 | 2.1 通知结构化理解 | 分类、重要性、用户相关性、行动需求、时间地点和理由；程序计算紧迫性 | analyze；支持缺正文、缺偏好与失败状态 |
 | 2.2 最小 Tool Calling | get_notice_detail、get_user_preferences 与按需执行循环 | agent-analyze；可见上下文证据校验、权限与预算限制 |
-| 2.3 结果持久化与评估 | NoticeAnalysis、SQLite 持久化、10～15 条真实通知与规则基线比较 | 后续范围；进度见 tasks.md |
+| 2.3 结果持久化与评估 | NoticeAnalysis、独立 SQLite、规则基线与逐条评分 | --save、analysis-list/get；真实评估与人工核对进度见 tasks.md |
 
 任务 2.1 使用 Pydantic AI 2.54.0（兼容 Python 3.10 的固定版本）、严格 Pydantic 输出模型及官方 DeepSeek Flash。框架的 notice_analysis 输出工具只编码结构化返回，不是任务 2.2 的业务读取工具。Schema、原文证据与时间在本地校验，紧迫性仍由程序计算。具体约定见 [分析契约](agent.md#第二阶段扩展说明)，设计依据与实测/失败见第二阶段报告；进度只在 tasks.md 维护。
 
@@ -53,12 +53,12 @@ python3 -m venv /tmp/seu-pulse-review
 /tmp/seu-pulse-review/bin/seu-pulse --help
 ```
 
-data/wheels/ 保留第一阶段历史产物，data/phase2-wheels/ 保留引入框架前的 2.1 wheel，data/pydantic-ai-wheels/ 保留框架接入产物。2.2 使用新目录保存项目与依赖，避免覆盖历史产物：
+data/wheels/ 保留第一阶段历史产物，data/phase2-wheels/ 保留引入框架前的 2.1 wheel，data/pydantic-ai-wheels/ 保留框架接入产物，data/phase22-final-wheels/ 保留 2.2 产物。含持久化与基线的安装产物在 data/phase23-wheels/，复验构建请使用新目录以保留历史：
 
 ```bash
-.venv/bin/python -m pip wheel --no-build-isolation --wheel-dir data/phase22-final-wheels --find-links data/pydantic-ai-wheels .
+.venv/bin/python -m pip wheel --no-build-isolation --wheel-dir data/phase23-wheels-new --find-links data/pydantic-ai-wheels .
 python3 -m venv /tmp/seu-pulse-phase2-review
-/tmp/seu-pulse-phase2-review/bin/python -m pip install --no-index --find-links data/phase22-final-wheels seu-pulse
+/tmp/seu-pulse-phase2-review/bin/python -m pip install --no-index --find-links data/phase23-wheels-new seu-pulse
 /tmp/seu-pulse-phase2-review/bin/python -m pip check
 /tmp/seu-pulse-phase2-review/bin/seu-pulse agent-analyze --help
 ```
@@ -262,7 +262,7 @@ data/ 中的原始 HTML、历史失败与验收 JSON、测试日志、数据库�
 
 ## 通知结构化分析
 
-先按上节存放 DeepSeek 密钥。分析已有通知会把标题、摘要、可用正文及显式偏好发送到官方 DeepSeek；仅在你授权处理这些内容时运行。命令以只读方式打开 SQLite，不触发采集、不修改原通知，也不保存分析结果到数据库：
+先按上节存放 DeepSeek 密钥。分析已有通知会把标题、摘要、可用正文及显式偏好发送到官方 DeepSeek；仅在你授权处理这些内容时运行。命令只读通知库，不触发采集、不修改原通知，默认不保存分析结果：
 
 ```bash
 .venv/bin/python -m seu_pulse list --limit 3
@@ -316,4 +316,40 @@ agent-analyze 默认给模型通知列表字段和资料可用性；模型自行
 .venv/bin/python -m scripts.verify_information_agent_live --notice-id NOTICE_ID --output data/agent-live-new.json
 ```
 
-普通使用会将模型选择读取的正文和显式偏好发送至官方 DeepSeek。任务 2.3 的持久化与 10～15 条人工参考/规则基线评估尚未实现；上述验证只证明受限工具协议与执行循环。
+普通使用会将模型选择读取的正文和显式偏好发送至官方 DeepSeek。上述验证只证明受限工具协议与执行循环；15 条真实通知的人工参考/规则基线评估还需独立完成。
+
+## 保存与追溯分析
+
+显式 --save 后，程序重新校验输出、原文证据、输入/内容指纹和程序紧迫性，再以新 UUID 追加到独立分析库；相同输入再次分析也保留新记录，不覆盖历史。默认路径 data/notice-analyses.db，可用 --analysis-db 修改；禁止指向原通知库或已有非分析数据库。有效部分结果保存为 insufficient_information，失败只作为 AnalysisAttempt，不产生有效 analysis_id。
+
+```bash
+.venv/bin/python -m seu_pulse agent-analyze NOTICE_ID --save
+.venv/bin/python -m seu_pulse analyze NOTICE_ID --save --analysis-db data/notice-analyses.db
+.venv/bin/python -m seu_pulse analysis-list --notice-id NOTICE_ID --limit 10
+.venv/bin/python -m seu_pulse analysis-list --include-failed
+.venv/bin/python -m seu_pulse analysis-get ATTEMPT_ID
+```
+
+保存命令只增加存储回执，不默认打印输入快照；analysis-get/list 会返回本地原文和偏好快照，方便追溯。原通知库始终只读，分析库与快照均被 Git 忽略；查询分析库不读取通知配置、不调用模型。存储失败会显式报错，不能称为已保存。
+
+## 真实通知评估与人工参考
+
+15 条候选清单见 [评估审查材料](docs/phase23-evaluation-review.md)。先只读准备材料，不调用 API；以下命令使用新的输出目录，保留已有失败和参考草稿：
+
+```bash
+.venv/bin/python -m scripts.prepare_evaluation --manifest data/phase23-evaluation-manifest-20261101.json --output data/evaluation-prepared-new
+# 仅在这些具体通知的模型外发范围获准后执行
+.venv/bin/python -m scripts.evaluate_notices run --bundle data/evaluation-prepared-new/samples.json --output data/evaluation-run-new
+```
+
+准备程序检查真实通知 ID 和内容版本，保存原链接、正文、固定 as_of（默认 2026-11-01T00:00:00Z）、规则预览和未签审表单。真实运行从只读 SQLite 固定本轮通知版本，模型初始不含正文，按需读取其内存快照；这些是实际采集内容，并非 fixture。每例保存实际输出、输入和工具记录及失败，规则基线只读取 Agent 最终获得的相同 input_snapshot，不调用 LLM、不额外预取资料。相同错误连续三例出现即停止，保留已完成材料与未完成数量。
+
+人工核对时复制 references.draft.json 为新文件（如 references.reviewed.json），逐条阅读 samples.json 的原文和来源链接，不能直接把规则预览当正确答案。填写 accepted_values 的四个判断值列表、must_be_unknown 的未知路径、evidence_notes 原文依据、allowed_tools/required_tools；已核对时间时新增 deadline_points（报名截止 at 数组或 null）、event_points（活动 start/end 对象数组或 null），不把公示期限当报名截止。可接受多个重要性等判断值，但理由需对应原文；无偏好相关性必须未知。
+
+仅真实核对后填写 reviewer，并将对应条目的 review_status 改为 approved；草稿不会被程序当作人工参考。评分不调用模型，不修改原始输出：
+
+```bash
+.venv/bin/python -m scripts.evaluate_notices score --run-dir data/evaluation-run-new --references data/references.reviewed.json --output data/evaluation-scores-new.json
+```
+
+汇总按实际签审字段统计，不为未标注维度编造正确率；执行失败按已标注字段计失败。时间点比较忽略条目顺序并认可 Z/+00:00 等价，保留未知组成部分；工具必要性与实际执行/回传分别评价。原文证据校验通过不等同于语义正确，仍需人工检查分类、时间、未知编造、重要性和偏好遵守。现有来源的独立竞赛、科研和奖学金样本不足，不能据本组材料推广结论。

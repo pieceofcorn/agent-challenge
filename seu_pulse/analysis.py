@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from copy import deepcopy
 import json
 from pathlib import Path
 import sqlite3
@@ -107,11 +108,21 @@ class AnalysisService:
         self.notices = notices
         self.client = client if client is not None else DeepSeekClient()
         self.clock = clock
+        self._last_context = self._last_source = None
+
+    @property
+    def input_snapshot(self):
+        return deepcopy(self._last_context)
+
+    @property
+    def source_snapshot(self):
+        return deepcopy(self._last_source)
 
     def analyze_notice(self, notice_id, *, preferences=None, as_of=None):
         return self._analyze_notice(notice_id, preferences=preferences, as_of=as_of)
 
     def _analyze_notice(self, notice_id, *, preferences=None, as_of=None, tool_run_factory=None):
+        self._last_context = self._last_source = None
         preferences = validate_preferences(preferences)
         as_of = as_of if as_of is not None else self.clock()
         result = {
@@ -134,6 +145,8 @@ class AnalysisService:
         snapshot = {key: getattr(notice, key) for key in (
             "id", "source_id", "title", "url", "published_at", "summary", "content", "category")}
         context = {"notice": snapshot, "preferences": preferences}
+        self._last_source = {**deepcopy(snapshot), "content_hash": notice.content_hash}
+        self._last_context = context
         tool_run = tool_run_factory(context, notice.content_hash) if tool_run_factory else None
         system_prompt = SYSTEM_PROMPT
         if tool_run is not None:

@@ -132,6 +132,14 @@ model_info={provider, requested_model, returned_model, model_version, request_id
 
 `agent_trace` 独立记录 trace_version、初始可见字段与输入哈希、预算、模型请求序号、业务工具名、经过校验的通知 ID 参数、实际执行/缓存状态、结果状态/摘要哈希、耗时、下一次请求反馈标记及终止原因；call_id 也是哈希，避免模型自由生成的标识夹带原文。不记录原始正文、偏好值、文件路径、密钥、模型推理或任意非法参数。调用记录只能证明程序观察到的请求和执行，不能证明模型内部思考。
 
-### 后续存储
+### 任务 2.3 分析存储契约
 
-NoticeAnalysis 持久化对象、SQLite 分析表和写入接口由任务 2.3 定义；当前不建分析表，不把失败或信息不足结果当成功分析入库。
+通知库继续只读，分析库默认 `data/notice-analyses.db`，与通知库分开；不修改 Notice v1、通知表、来源表或运行记录。`analyze`/`agent-analyze` 默认仍不持久化，显式 `--save` 才保存，`--analysis-db` 可指定分析库；目标不允许指向通知库或已有非分析数据库。模型没有分析库写入工具，程序在执行结束后验证并写入。
+
+`NoticeAnalysis` 是独立有效分析对象：`analysis_id`（本次 UUID）、`record_schema_version="1"`、`stored_at`（UTC）、`source_snapshot`、`input_snapshot`、`result`。result 保留原分析封装及实际模型、分析/as_of 时间、内容/输入/偏好/提示哈希、状态和工具记录。source_snapshot 只含 Notice 的 id/source_id/title/url/published_at/summary/content/category/content_hash，不含非必要 metadata 或采集时间；input_snapshot 为实际提供的通知字段与显式偏好。保存前重算原内容指纹、输入/偏好哈希、Schema/原文证据和程序紧迫性；结果不能脱离输入保存。未知模型版本继续 null。
+
+每次执行追加新记录，相同通知/输入再次分析也保留新 UUID，内容变化通过 content_hash 和快照区别；无覆盖、删除或“最新结果”冒充历史。分析库 `analysis_attempts` 保存所有合法执行封装与快照；`notice_analyses` 仅引用通过校验的 success/insufficient_information 尝试，后者必须保持原状态，不当作成功。failed 封装 analysis/urgency 必须 null，error 非空，仅保存失败尝试，analysis_id=null。伪称 success 的非法输出拒绝保存。两个表在一个事务中追加，外键与状态约束阻止失败尝试成为有效分析。
+
+`AnalysisStore(path, read_only=False)` 提供 `save(result, *, input_snapshot, source_snapshot)`、`get(attempt_id)`、`list_records(notice_id=None, include_failed=False, limit=50)`；有效保存返回 NoticeAnalysis，失败返回独立 AnalysisAttempt（attempt_id、analysis_id=null、相同版本/快照/result）。`analysis-list`/`analysis-get` 只读分析库，不打开通知库，不调用模型；默认列表只含有效结果，可显式包含失败。保存命令的 JSON 添加存储回执（ID、状态），不默认回显输入快照；仅查询记录时返回本地快照。
+
+评估使用固定 UTC as_of、选定真实通知与明确标识的偏好条件。规则基线不请求模型，必须在 Agent 实际获得的同一 input_snapshot 上运行，不能预读 Agent 尚未获得的资料。参考草稿、用户核对状态、样本覆盖缺口及逐字段评分分别记录；未签审的自动草稿不能称为人工参考已验收。具体外发范围须遵循已有用户授权，不自动扩展三条通知的旧授权。持久化、规则测试、真实模型调用和人工评分分别留证，不混为通过结论。
