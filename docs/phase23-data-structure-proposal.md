@@ -1,175 +1,109 @@
-# 事项理解与分层判断数据结构建议
+# 事项层级与分层评估数据建议（第二轮草稿）
 
-状态：**待用户确认的设计草稿，未冻结、未编码、未用于最终评分**。产品需求以 [require.md](../require.md#产品逻辑修正2026-11-02) 为准；15条参考和评估定义见 [审查稿](phase23-evaluation-review.md)。Notice v1与历史Analysis v1均保留，不能把旧结果直接转换成以下结构并称为新模型实测。
+**待最终审查，未冻结、未编码、未评分。** 本稿只定义参考层级及评估表示，不修改运行Schema或程序。产品原则见 [require.md](../require.md#产品逻辑修正2026-11-02)，逐条事项见 [15条参考](phase23-evaluation-review.md)，数量和旧条目去向见 [第二轮变更表](phase23-round2-changes.md)。旧设计与旧参考均保存在Git和本地历史副本中。
 
-## 分层与权限
+## 一、先决定信息的层级
 
-| 层 | 输出/责任 | 与后续交互的关系 |
+“值得保留”不等于“是一个独立事项”。判断依据是它在通知业务链中是否有可识别的独立目的、责任、时间节点或结果；不能只因为出现一个动词、主体名、日期或名词就另计一项。
+
+| 层级 | 判断与表示 | 独立事项计数 |
 | --- | --- | --- |
-| 通知理解 | 通知类别、所有可区分事项及事实、证据、缺失、冲突 | 不按主体、历史性或是否需学生办理裁剪 |
-| 展示资格 | Agent给出push/do_not_push及依据，表示是否进入应用内所有通知流 | 资格规则未定时值为null；不是系统消息 |
-| 个性化重要性 | Agent结合显式偏好给出important/ordinary及依据 | 无偏好为null/不可评，不自动当普通 |
-| 时间计算 | 程序产生生命周期、Deadline状态、剩余时间、紧急程度 | 不决定事项由谁执行、不创建待办 |
-| 学生决策 | 后续交互中学生选择加入/不加入待办 | 两种决定前重要通知持续等待，决定后才移出重要列表；本轮不实现 |
+| 独立事项 | 具有可区分的办理/活动/审核/发布目标、责任或独立节点/结果；主体和目的仍要有来源依据 | 计数 |
+| 子步骤 | 父事项的执行、查询、提交材料或受理过程，没有另一个独立业务目标；保留步骤主体和相对时限 | 不另计 |
+| 属性 | 资格、条件、费用、要求、认定权限、预期成果、条件式机会；不因提及证书或审核权限就建新事项 | 不另计 |
+| 备选方案 | 同一事项中的课程模块、住宿方式等；保留各选项的目的、时间、费用与选择规则 | 不另计，父项目计一次 |
+| 背景事实 | 项目成立、历史合作、引用政策等对当前业务的说明 | 不另计，保留原文与历史时间 |
 
-建议输出不含action_required、should_act、create_todo、recommended_todo等全通知决定字段。具体要求作为原文事实提取，例如“学院在某日前审核”，不转述成“当前学生必须完成该审核”。重要通知是否进入待办不属于Agent输出。
+独立性不是“当前是否需要学生做什么”。真实独立的学院审核、学校公示、外方结果发布、学生缴费和奖学金申请均保留；历史业务事项也不因已过期降为背景。相反，历史成立/合作和泛泛的“此前经过考核”属于来由说明，不能随意扩为更多安排。
 
-下图仅说明概念分层，页面与学生交互均不在本轮实现：
+共同活动的参加者/组织者不必各造一场活动。出国申报与学院、国际合作处两方审核有不同责任，本轮分别保留三个事项；原文没有说明先后次序和各自截止，不补程序阶段。课程学习计划和学分认定表述在第9/11/12/13/14/15条只是申请要求及学院认定权限说明，未单列办理入口或时间，先归申请属性。若之后原文确有独立学分申请/审批安排，再据证据设独立事项。
 
-```mermaid
-flowchart TD
-    N[原始通知] --> U[提取全部事项与证据]
-    U --> T[程序计算各事项时间状态与紧急程度]
-    U --> D{应用内推送资格}
-    D -->|不推送| X[不进入展示流，事项提取仍保留]
-    D -->|推送| A[所有通知]
-    A --> I{依据显式偏好的重要性}
-    I -->|普通| O[仅保留在所有通知]
-    I -->|重要| W[重要列表等待学生决定]
-    I -->|未知| P[保留未知，展示降级策略待确认]
-    W --> S{学生选择}
-    S -->|加入待办| R[按学生决定处理并移出重要列表]
-    S -->|不加入待办| R
-```
+证书、成绩单、报告和可能获得推荐信通常是项目成果属性。第15条另有明确的“考核结束后4周内发布”结果发布事项，应独立保留；不能为减少数量把它并入笼统的证书预期。
 
-不推送的通知不进入重要展示列表；不能由重要性或紧急程度暗中反转推送资格。未作学生决定时重要通知保持等待，不能因模型认为“不需行动”、已过期或未自动建待办就移出重要列表。
+## 二、通知层和事项层分开分类
 
-## 建议的对象关系
+以下均为人工参考建议，不是可执行类型定义：
 
 ```text
-NoticeUnderstandingDraft
-  proposal_version: "matter-understanding.draft.1"
-  notice_id, notice_content_hash, input_hash
-  classification: Judgment<notice_category>
-  matters: Matter[]
-  missing_information: Gap[]
-  conflicts: Conflict[]
-
-NoticeJudgmentsDraft
-  notice_id, understanding_hash, preferences_hash, display_policy_id
-  display_eligibility: Judgment<"push" | "do_not_push">
-  personalized_importance: Judgment<"important" | "ordinary">
-
-TemporalAssessmentDraft       # 程序拥有，不接受LLM生成
-  as_of, deadline_policy_version, urgency_policy_version
-  matter_assessments: MatterTemporalAssessment[]
+NoticeReferenceDraft
+  proposal_version: "matter-reference.round2.draft.1"
+  notice_id, notice_content_hash, as_of
+  notice_category:
+    primary: NoticeCategory|null
+    secondary: NoticeCategory[]
+    topic_tags: string[]
+    reason, evidence[]
+  display_eligibility: Judgment<push|do_not_push>
+  personalized_importance: Judgment<important|ordinary>
+  matters: MatterReference[]
+  notice_context_facts: ContextFact[]
+  background_facts: BackgroundFact[]
+  source_availability: {body, attachments}
+  conflicts[]
 ```
 
-以上是分层关系建议，可在一个响应封装中并列，不要求新增多个Agent。无显式偏好仍可提取事项；推送资格不可用或不推送，也不能导致事项先被丢弃。日期、政策、输入版本分别留存，政策或偏好变化不改原始事实。
-
-`Judgment<T>={value:T|null, status:known|unknown|not_evaluated, reason, evidence[], policy_ref?}`。理由不是证据替代品。个性化重要性的已知值需要通知和显式偏好两类依据，展示资格需要通知事实和明确展示政策；政策缺失不填猜测值。
-
-## 事项和事实
+- `notice_category.primary`描述整条通知主要用途，至多一个；无法确定时保留未知，不把“academic_affairs/exchange”当成一个新类别。
+- `secondary`是其他确有证据支持的通知主题类别，不取代主分类，不影响独立事项数量；`topic_tags`保存更细主题。建议沿用competition/lecture/research/activity/academic_affairs/exchange/scholarship/other的通知类别词表，不把application、review、payment放进该词表。
+- 例：第11条主exchange、辅scholarship，具体事项中仍有申请、审核、缴费等类型；第15条主exchange、辅research。第2条暂以academic_affairs为主、exchange为辅，并标标题证据有限。第8条“专项资助结果”是主题标签，不强行等同奖学金类别。这些均待人工确认。
 
 ```text
-Matter
-  matter_id                  # 程序分配，不能代表个人待办ID
-  name: Fact<string>
-  kind: activity | application | review | publication | objection |
-        payment | scholarship_application | result_release | enrollment |
-        procedure | assessment | funding_result | policy | historical_notice | other
-  actors: Actor[]            # 分清执行者、审核者、参与对象、发布者
-  purpose: Fact<string>
-  audience: Fact<string>[]
-  conditions: Fact<string>[]
-  requirements: Fact<string>[]
-  periods: TimeRange[]       # 可以多个时间段、各端点独立未知
-  deadlines: Deadline[]      # 每个目的/主体的截止分别保留
-  deadline_coverage: explicit | not_stated | unavailable | not_applicable
-  locations: Location[]
-  fees: Fee[]
-  related_matters: {matter_id, relation, evidence[]}[]
-  missing_information: Gap[]
-  conflict_ids: string[]
+MatterReference
+  matter_id                  # 独立事项ID，不是个人待办ID
+  name
+  matter_type                # 如activity/application/review/publication/payment/
+                             # scholarship_application/result_release/enrollment/policy
+  matter_subject[]           # 责任主体/参与角色、职责、未知说明、证据
+  matter_purpose             # 业务目的和适用目标，不是“当前用户必须做”
+  time_nodes[]               # 事项本身的开始/结束/截止/发布/相对约束
+  substeps[]                 # 步骤自带主体、目的、证据、相对时限，且指向父事项
+  attributes:
+    audience[], conditions[], requirements[], fees[], locations[]
+    expected_outcomes[], conditional_opportunities[]
+  option_groups[]            # group与option各有ID、选择关系、时间/费用等
+  conflict_refs[]
+  evidence[]
 
-Fact<T>
-  value: T|null
-  state: known | not_stated | unavailable | conflicting
-  evidence: {field, quote, locator?}[]
-  alternatives: {value, evidence[]}[]   # 冲突候选，非最终裁决
-  explanation: string|null
+TimeNode
+  node_id, owner_ref          # matter/substep/option的明确归属
+  time_type                  # start/end/deadline/occurrence/relative_constraint等
+  purpose, responsible_subject_refs[]
+  raw_text, raw_evidence[]
+  date?, time?, utc_offset?, precision
+  source_status              # known/partial/not_stated/unavailable/conflicting
+  alternatives[], conflict_ref?
 ```
 
-- 空白/未提及/正文不可用/互相冲突不能全部折叠成“没有”；费用未提及不等于免费。确有“无费用”等否定陈述可用带证据的known值表达。
-- 主体以组织/角色和职责为单位，`Actor={role, name:Fact<string>, responsibility, evidence[]}`；主体不明确就保留未知，不因通知发布在教务处自动认定教务处执行所有事项。共同审核者可在同一审核事项中列全，学生提交与学院审核必须是不同事项。
-- 同一目的在不同段落重复出现可去重并保留全部依据；同日但不同目的不能合并。同一目标出现冲突日期时保留原文候选并关联冲突，不假装两个无关任务或任意选一个。
-- `Fee={purpose, amount_raw, amount?, currency_raw, unit_raw, payer:Fact<string>, included[], excluded[], evidence[]}`。原文“约合人民币”标为原文估算，不用当前汇率重算；付款事项与费用金额资料分别关联。
-- 地点、资格、费用、要求需按事项归属；共同条件可用明确引用关联，不能暗中复制给不适用事项。课程主题选项/住宿选项保持备选关系，不等于学生已选择。
-- 名单或附件未读取时标明不可用，不编造名单成员、附件细节、资格或实际报名/办理完成情况。原文要求/历史计划并不证明事项实际完成。
+同日的外方网申和奖学金申请是不同事项与不同节点，不能用排序后的日期集合合并。子步骤有时间限制也须保留，例如外方收齐资料后1—2工作日回执；它不因此必然成为另一个独立事项。选项中的时间仍归该选项，例如OPP模块的不同上课区间，不直接变成五个已参加的活动。
 
-## 时间、冲突与历史性
+费用未提不等于免费；主体未明确不推定执行机构。原文“约合人民币”只是原文估算。住宿是备选费用，不能加总成学生必付；共同项目条件不自动施加给学院等审核者。预期成果和“有机会”保留条件性，不表示学生已取得。
 
-```text
-TimePoint
-  date: Fact<YYYY-MM-DD>
-  time: Fact<HH:mm[:ss]>
-  utc_offset: Fact<offset>
-  raw_text, precision, evidence[]
+## 三、时间、优先级及信息可用性各自归层
 
-TimeRange
-  raw_text, start:TimePoint|null, end:TimePoint|null, evidence[]
-
-Deadline
-  deadline_id, purpose, responsible_actor_refs[]
-  kind: submission | review | publication | objection | payment |
-        scholarship_application | other
-  at:TimePoint|null
-  operator_raw                 # “前”“截至”等原文，不补00:00/23:59
-  state: known | partial | unknown | conflicting
-  alternatives: {raw_text, at?, evidence[]}[]
-  raw_text, evidence[]
-```
-
-原文和每个端点各自保留依据。完整的开始日期不能因为结束年份缺失而一起置空；结束端不能仅靠开始端、标题年份、发布时间或URL补齐。`13.00`原样保留；本草稿沿用未确认新解析规则前不把它改成`13:00`的处理。英国时间只保存文字，UTC偏移未知；不凭校园或国家套时区。
-
-```text
-MatterTemporalAssessment
-  matter_id
-  scheduled_relation: past | future | ongoing | unknown
-  historical: boolean|null
-  completion_status: unknown   # 除非原文明确给出了实际完成事实
-  basis: exact_instant | calendar_bound | source_period | insufficient
-  basis_evidence[]
-  deadline_assessments: DeadlineAssessment[]
-
-DeadlineAssessment
-  deadline_id
-  deadline_state: expired | upcoming | due_now | unknown
-  remaining_seconds: number|null
-  remaining_bounds: {min?, max?}|null
-  urgency: very_urgent | somewhat_urgent | not_urgent | null
-  urgency_status: computed | inapplicable_expired | insufficient_time |
-                  pending_policy | conflicting_time
-  reason, calculation_basis, as_of
-```
-
-没有截止的事项通过`deadline_coverage`表达，不虚造Deadline；“源文未给截止”“正文不可用”“明确无截止”分别处理。不要用不紧急代替截止未知或无截止。每个事项、每个不同目的Deadline单独计算，不擅自把最紧急的学院任务当成学生个人任务，也不在本轮制定通知整体聚合规则。
-
-### 时间判定建议（仍待确认）
-
-| 已知资料 | 过期/剩余时间 | 紧急程度 |
+| 输出 | 所属层级 | 责任与限制 |
 | --- | --- | --- |
-| 精确可靠截止已早于as_of | expired，精确剩余秒数可为负数 | null，inapplicable_expired |
-| 精确截止恰为as_of | 建议due_now；是否此刻即过期待确认 | 建议very_urgent，尚未冻结边界 |
-| 0 < 剩余时间 <= 24小时 | upcoming，按实际瞬间计算 | very_urgent，24小时端点包含 |
-| 剩余时间 > 24小时 | upcoming | null/pending_policy：较紧急边界未定，不能全部归为不紧急 |
-| 日期/时刻/时区不足，无法定位截止 | unknown，remaining_seconds=null | null/insufficient_time |
-| 有日期冲突 | 保留候选；精确剩余秒数未知 | 通常null/conflicting_time；不能择一计算 |
+| 推送资格 | 通知层 | Agent依据明确政策判断是否进入应用内所有通知流；政策未定，本15条不可评 |
+| 个性化重要性 | 通知层 | Agent依据显式用户偏好判断重要/普通；本组没有真实偏好，不设参考答案 |
+| 时间节点、Deadline状态和紧急程度 | 事项层；节点保留其事项/选项/步骤归属 | 程序按时间证据与as_of计算，不由LLM编造 |
+| 多事项通知的整体紧急程度 | 通知层聚合政策 | 待确认，不默认取最大/最小/最近截止 |
+| 哪些主体Deadline触发软件消息 | 独立提醒政策 | 待确认，不默认所有学院/学校/外方Deadline都提醒学生；不发送消息 |
+| 是否加入待办 | 学生个人决定 | 后续交互，Agent不决定；本轮不实现 |
 
-“是否明显已过去”可以比“精确还有几秒”更早确定。建议保守使用日期/年度边界：只有在所有合法偏移、源文候选和日内时刻都落在as_of之前时，标记expired并说明calendar_bound；不据此补写来源时区或23:59。若尚未确定日期边界算法则保留该理由为待实现建议，不宣称已有程序支持。
+建议未来的程序结果只描述各节点/事项：`deadline_state`、`remaining_seconds`或可靠范围、`urgency`、依据及`as_of`。过期、无截止、截止未知和冲突分开，不能全部标为不紧急。后台运算与前端页面/消息接口不是同一能力。
 
-第13条的2025年两个校内日期候选、4月15日审核、4月18日公示、5月5日外方网申，在2026-11-01T00:00:00Z均已过去；即使两个校内日期冲突，两者都过期。2025年秋季项目整体是历史计划；不能因此补出结束端完整日期，也不能说学生已经参加/取得证书。未标具体时刻的学分/出国手续保留“历史项目关联、截止未给”。这种年度/候选一致的历史判定与精确倒计时分开。
+已确定：**非常紧急为未过期且剩余时间不超过24小时，24小时端点包含。** 较紧急上界待定，不能沿用72小时；超过24小时但未定政策时保留pending_policy。精确截止等于as_of的处理仍待确认，不擅自定为过期或到期中。
 
-本轮参考的固定as_of继续为2026-11-01T00:00:00Z，不随当前会话日期改变，也不改旧评估文件。日期明确且远离边界的事项可标日历意义的过去/未来；年份不明确的第3/4/5/10条，不从标题、落款或URL擅补日期来计算过期。
+原文时间必须保留。完整开始日期独立提取；另一端缺少年份/时刻/偏移仍未知，不从标题、落款或URL补全。`13.00`原样保留，不改成`13:00`；第10条独立文字中的`13:00`有自己的证据，只用于同一首场记录，不把首场重复计为第10场。
 
-## 兼容与未定策略
+固定评估时刻仍是2026-11-01T00:00:00Z。第13条校内2025-04-21/2025-04-14两候选均早于评估时刻，日期冲突保留、统一值未知，但过期关系可给保守日历参考；2025-04-15审核、04-18公示、05-05网申也保留并标过期。2025秋季项目作为历史项目保留，不能因为结束端年份未重述而删除开始日期，也不能假称学生实际参加或完成。
 
-建议未来以独立理解版本保存matters，不原地改写Analysis v1的events/registration_deadlines/action_required。旧重要性high/medium/low不能映射成新的个性化important/ordinary，旧urgency.v1的72小时阈值也不能迁移成新政策。旧15条只能作历史实现的模型与工具证据，新字段当时未产出应标unavailable，不能填反推值或直接宣判新能力正确。
+只有所有可行候选/时区偏移/日内时间都在as_of前，才能给保守日历过期关系；不据此填时区、23:59或精确负秒数。相对手续或未给绝对截止的项目要求保留历史关联，不伪造已超期。此处是参考建议，程序尚未实现新计算规则。
 
-待用户决定的策略：
+`source_availability.body`与`source_availability.attachments`分别表示内容可用性：第4条正文169字、第5条145字均可读，附件内容均未读取/未验证。补充属性列表为空不等于正文不可用，未读取附件也不等于已验证附件不可访问。新参考中的原文和旧模型记录分别留存，不互相覆盖。
 
-1. 推送资格具体依据哪些来源、质量、范围或用户条件；现有15条均暂留推送参考null，不能因历史性或无正文自动不推送。
-2. 较紧急上界，以及超过24小时但政策未定时继续保留pending_policy；本轮不提议数字阈值。
-3. 精确截止等于as_of采用due_now还是expired；上表给出了建议但未冻结。
+## 四、保留和版本边界
 
-个人重要列表、学生处理决定和未来消息接口仅作为产品边界说明，本轮不设计页面、交互实现、待办写入、消息发送或日历接口。
+旧146条候选的每个编号都保留到第二轮去向映射：独立事项、子步骤、属性、选项或背景。原条目的证据、时间、主体、目的及其他字段存于新本地提纲的source_outline_records，便于检查信息没有因层级调整丢失。旧01/02/03参考文件、原始模型输出、数据库和失败记录不变。
+
+旧action_required、内容重要性和urgency.v1不能转换成新决定；旧score命令不适用于本稿。没有真实偏好或推送规则时分别标不可评，空值不是普通或不推送。15条继续是探索性样本，不称完整Benchmark；当前不冻结参考，不计算任何最终指标。
+
+待最终确认：94个独立事项及非独立层级划分、主辅通知分类、等价匹配与指标分母；以及通知紧急程度聚合、提醒主体、展示资格政策、较紧急上界和截止恰等于as_of的规则。后几项可以继续待定，不能为了完成本轮填入默认值。
