@@ -1,6 +1,6 @@
 # 未来 Agent 接入契约
 
-本文维护数据模型与接口契约。第一阶段 Notice v1 及下列 Python 服务接口已实现。任务 2.1 按用户自主选择授权完成设计审查，具体分析契约见后文；工具执行循环和分析持久化仍未实现。调用方通过服务读取通知，不直接操作采集器或数据库。
+本文维护数据模型与接口契约。Notice v1、原 Python 服务层、分析与工具循环的具体约定见下文。调用方通过服务读取通知，不直接操作采集器或数据库。
 
 ## 通知模型 v1
 
@@ -111,7 +111,7 @@ model_info={provider, requested_model, returned_model, model_version, request_id
 
 最多两次模型请求（初次 + 一次输出修正），由 Pydantic AI 的输出重试预算与 UsageLimits(request_limit=2) 共同限制，程序不再叠加外层重试。每次 HTTP 超时 60 秒、max_tokens=4096、响应上限 512 KiB，外层 asyncio.wait_for 设为 2*timeout+5 秒。SDK 网络重试为零，鉴权、网络与限流失败不隐式重试。严格校验原始输出参数 JSON，不以抽取片段、补字段、类型强转或规则猜测修复；Pydantic 验证后仍校验原文证据、时间和空值。新增框架错误 code 为 model_request_limit/model_framework，原有 notice_not_found/notice_read/input_limit/invalid_output、credential_config/model_unavailable、model_auth/model_network/model_rate_limit/model_http/model_redirect/model_response_limit/model_blank/model_incomplete 继续区分。
 
-模型通过 Pydantic AI Agent、OpenAIChatModel、DeepSeekProvider 和官方 OpenAI 兼容 SDK 请求官方 HTTPS Chat Completions；使用非流式非思考模式。输出为 ToolOutput(AnalysisOutput, name="notice_analysis", strict=False)，不启用 DeepSeek beta strict 或原生 JSON Schema 模式。notice_analysis 仅编码最终结果，不执行业务操作；框架校验失败通过 ModelRetry 在同一 Agent 中修正。未注册 get_notice_detail/get_user_preferences 或其他业务、Shell、文件和自由联网工具，不能据此验收任务 2.2。
+模型通过 Pydantic AI Agent、OpenAIChatModel、DeepSeekProvider 和官方 OpenAI 兼容 SDK 请求官方 HTTPS Chat Completions；使用非流式非思考模式。输出为 ToolOutput(AnalysisOutput, name="notice_analysis", strict=False)，不启用 DeepSeek beta strict 或原生 JSON Schema 模式。notice_analysis 仅编码最终结果，不执行业务操作；框架校验失败通过 ModelRetry 在同一 Agent 中修正。任务 2.1 的 analyze 入口未注册业务或任意执行工具，不能单凭其输出工具验收任务 2.2；后者业务工具仅由 agent-analyze 注册。
 
 密钥优先读进程 DEEPSEEK_API_KEY，否则只读 --env-file 文件同名项（默认 .env）。文件须为仅当前用户可读的常规文件，不执行 shell 或展开变量，不向结果/日志写密钥。HTTP 客户端拒绝重定向并限制响应体，禁用 SDK 自动重试，不继承其他 OpenAI 项目的组织/项目身份；不配置外部追踪或 Agent workspace，关闭框架横幅以保持 CLI JSON 输出。
 
